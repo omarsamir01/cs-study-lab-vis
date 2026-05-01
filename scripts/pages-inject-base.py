@@ -13,9 +13,11 @@ def main() -> None:
     text = target.read_text(encoding="utf-8")
     if "<base href=" in text:
         return
-    patched = text.replace("<head>", f'<head>\n    <base href="/{repo}/" />', 1)
-    if patched == text:
-        raise SystemExit("Could not find <head> in index.html")
+    # Keep charset as the first bytes of <head> for parsers; base must not precede charset.
+    marker = '<meta charset="UTF-8" />'
+    if marker not in text:
+        raise SystemExit("Could not find charset meta in index.html")
+    patched = text.replace(marker, marker + f'\n    <base href="/{repo}/" />', 1)
     target.write_text(patched, encoding="utf-8")
 
 

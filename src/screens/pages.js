@@ -12,6 +12,27 @@ import {
   radixSortSteps,
 } from "../engines/sortSteps.js";
 
+/** Singly: next only. Doubly: next + faint prev back-edge. */
+function LinkArrowGlue({ doubly }) {
+  const next = html`<svg className="ll-svg-arrow" viewBox="0 0 52 16" aria-hidden="true">
+    <path
+      d="M2 8h30l-7-5"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    />
+    <path d="M34 8 L44 8 M40 5.2 L44 8 L40 10.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+  </svg>`;
+  if (!doubly) return html`<div className="ll-connect">${next}</div>`;
+  const prev = html`<svg className="ll-svg-arrow" viewBox="0 0 52 16" aria-hidden="true" style=${{ opacity: 0.52 }}>
+    <path d="M50 8H20l7-5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" />
+    <path d="M18 8L8 8M12 5.2L8 8l4 2.8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" />
+  </svg>`;
+  return html`<div className="ll-connect doubly">${prev}${next}</div>`;
+}
+
 function useParsedArray(defaults = DEMO_ARRAY) {
   const [inputStr, setInputStr] = useState(defaults.join(", "));
   const [arr, setArr] = useState(defaults);
@@ -139,9 +160,13 @@ export function Home() {
       <h1>CS Study Lab</h1>
       <p className="subtitle">
         Interactive tour of the sorting algorithms in
-        <code style=${{ color: "#3db8ff" }}>Lab_8_task.cpp</code> plus core linear and tree structures. Pick a topic in the
+        <code className="code-accent">Lab_8_task.cpp</code> plus core linear and tree structures. Pick a topic in the
         sidebar—each opens in its own view so you can focus on one idea at a time.
       </p>
+      <div className="callout-soft">
+        <strong>Hosted on GitHub Pages?</strong> Scripts load from jsDelivr—if the tab stays blank, hard-refresh
+        (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd>) or try another browser; campus networks sometimes filter ES module CDNs.
+      </div>
       <div className="info-grid">
         <div className="info-chip"><strong>Sorting</strong>Insertion, Shell, Heap, Merge, Count, Radix</div>
         <div className="info-chip"><strong>Linear DS</strong>Linked lists, stacks, queues</div>
@@ -149,10 +174,9 @@ export function Home() {
         <div className="info-chip"><strong>Hashing</strong>Chaining visualization + load factor notes</div>
       </div>
       <p className="prose">
-        <strong style=${{ color: "#ffc233" }}>How to run:</strong> ES modules cannot load from
-        <code>file://</code>. From this folder run <code style=${{ color: "#3db8ff" }}>node serve.mjs</code> (or double-click
-        <code>start-server.bat</code>, which prefers Node then falls back to Python), then open
-        <code style=${{ color: "#3db8ff" }}>http://127.0.0.1:8090/</code>.
+        <strong className="code-accent">How to run locally:</strong> ES modules cannot load from
+        <code>file://</code>. From this folder run <code className="code-accent">node serve.mjs</code> or
+        <code>start-server.bat</code>, then open <code className="code-accent">http://127.0.0.1:8090/</code>.
       </p>
       <p className="prose">
         PDF references on your machine:
@@ -221,8 +245,8 @@ export function LinkedLists() {
                 ${v}
               </${motion.div}>
               ${i < values.length - 1
-                ? html`<span className="arrow">${mode === "single" ? "→" : "⇄"}</span>`
-                : html`<span className="arrow" style=${{ opacity: 0.4 }}>∅</span>`}
+                ? html`<${LinkArrowGlue} doubly=${mode === "doubly"} />`
+                : html`<span className="ll-tail">∅ nil</span>`}
             </${React.Fragment}>
           `
         )}
@@ -254,11 +278,23 @@ export function StackPage() {
         <button className="btn btn-ghost" onClick=${pop}>Pop</button>
       </div>
       <div style=${{ display: "flex", gap: "1.5rem", alignItems: "flex-end" }}>
-        <div className="deck">
-          ${[...s].reverse().map((v, i) => html`<div className="deck-item" key=${`s-${s.length}-${i}-${v}`}>${v}</div>`)}
+        <div className="stack-diagram">
+          <div className="stack-guide">
+            <span className="guide-label">Push & pop here</span>
+            <span className="stack-arrow-down">▼</span>
+            <span className="guide-label">TOP</span>
+          </div>
+          <div className="deck">
+            ${[...s].reverse().map((v, i) =>
+              html`<div className="deck-item" key=${`s-${s.length}-${i}-${v}`}>${v}</div>`
+            )}
+          </div>
         </div>
         <div className="prose">
-          <p><b>Top</b> is animated upward. Amortized O(1) with dynamic array; linked version avoids realloc copy.</p>
+          <p>
+            <strong>Last in, first out:</strong> visualize the call stack—new items compress older ones downward; pop always
+            peels the top layer.
+          </p>
         </div>
       </div>
     </div>
@@ -279,6 +315,18 @@ export function QueuePage() {
       <div className="controls">
         <button className="btn btn-primary" onClick=${enqueue}>Enqueue</button>
         <button className="btn btn-ghost" onClick=${dequeue}>Dequeue</button>
+      </div>
+      <div className="queue-flow">
+        <div className="queue-axis">
+          <span>Front — dequeue</span>
+          <span>Rear — enqueue</span>
+        </div>
+        <div className="queue-svg-wrap">
+          <svg viewBox="0 0 400 22" width="100%" height="22" preserveAspectRatio="none" aria-hidden="true">
+            <line x1="8" y1="11" x2="392" y2="11" stroke="currentColor" stroke-width="1.5" stroke-dasharray="5 4" />
+            <polygon points="392,11 382,6 382,16" fill="currentColor" />
+          </svg>
+        </div>
       </div>
       <motion.div layout className="deck horizontal">
         ${q.map(

@@ -32,6 +32,7 @@ jobs:
           cp -r styles src deploy/
           touch deploy/.nojekyll
           python3 scripts/pages-inject-base.py deploy/index.html
+          cp deploy/index.html deploy/404.html
 
       - uses: actions/configure-pages@v5
 

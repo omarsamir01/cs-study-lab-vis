@@ -4,18 +4,18 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>CS Study Lab — Sorting & Data Structures</title>
-    <!-- One shared React for all libs (avoids “Invalid hook call” / blank screen) -->
+    <!-- jsDelivr +esm: sub-imports resolve on cdn.jsdelivr.net (fixes flaky loads from github.io with some CDNs) -->
     <script type="importmap">
       {
         "imports": {
-          "react": "https://esm.sh/react@18.3.1",
-          "react-dom": "https://esm.sh/react-dom@18.3.1",
-          "react-dom/client": "https://esm.sh/react-dom@18.3.1/client",
-          "react/jsx-runtime": "https://esm.sh/react@18.3.1/jsx-runtime",
-          "react/jsx-dev-runtime": "https://esm.sh/react@18.3.1/jsx-dev-runtime",
-          "htm": "https://esm.sh/htm@3.1.1",
-          "react-router-dom": "https://esm.sh/react-router-dom@6.28.0?external=react,react-dom",
-          "framer-motion": "https://esm.sh/framer-motion@11.11.17?external=react,react-dom"
+          "react": "https://cdn.jsdelivr.net/npm/react@18.3.1/+esm",
+          "react-dom": "https://cdn.jsdelivr.net/npm/react-dom@18.3.1/+esm",
+          "react-dom/client": "https://cdn.jsdelivr.net/npm/react-dom@18.3.1/client/+esm",
+          "react/jsx-runtime": "https://cdn.jsdelivr.net/npm/react@18.3.1/jsx-runtime/+esm",
+          "react/jsx-dev-runtime": "https://cdn.jsdelivr.net/npm/react@18.3.1/jsx-dev-runtime/+esm",
+          "htm": "https://cdn.jsdelivr.net/npm/htm@3.1.1/+esm",
+          "react-router-dom": "https://cdn.jsdelivr.net/npm/react-router-dom@6.28.0/+esm",
+          "framer-motion": "https://cdn.jsdelivr.net/npm/framer-motion@11.11.17/+esm"
         }
       }
     </script>

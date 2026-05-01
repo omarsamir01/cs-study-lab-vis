@@ -15,6 +15,8 @@ Then open **http://127.0.0.1:8090/**
 After the workflow **Deploy to GitHub Pages** finishes successfully:  
 **https://omarsamir01.github.io/cs-study-lab-vis/**
 
+The site uses **jsDelivr `+esm` bundles** so module sub-requests stay on one CDN (more reliable on GitHub Pages than mixed `esm.sh` loads). A **`404.html`** copy of `index.html` is published so deep links fall back without a hard 404.
+
 If the first deployment fails: go to **Settings → Pages**, set **Build and deployment → Source** to **GitHub Actions**, save, then open the **Actions** tab and **Re-run** the failed job.
 
 ## Why it broke before
