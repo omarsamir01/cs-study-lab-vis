@@ -22,13 +22,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Only publish what the browser needs (no workflow noise in artifact)
+      # Prefix for assets (./src/...) when URL has no trailing slash — GitHub Pages project site
       - name: Prepare site
+        env:
+          REPO: ${{ github.event.repository.name }}
         run: |
           mkdir -p deploy
           cp index.html README.md deploy/
           cp -r styles src deploy/
           touch deploy/.nojekyll
+          python3 scripts/pages-inject-base.py deploy/index.html
 
       - uses: actions/configure-pages@v5
 

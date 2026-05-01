@@ -19,6 +19,19 @@ import {
   HashTablePage,
 } from "./screens/pages.js";
 
+/**
+ * GitHub Pages serves project sites at /<repo>/...
+ * HashRouter must use the same basename or @remix-run/router throws (history.ts invariant).
+ */
+function routerBasename() {
+  const path = typeof window !== "undefined" ? window.location.pathname || "" : "";
+  const parts = path.split("/").filter(Boolean);
+  if (!parts.length) return "";
+  const first = parts[0];
+  if (first.includes(".")) return "";
+  return `/${first}`;
+}
+
 function NavItem({ to, color, children }) {
   return html`
     <${NavLink}
@@ -54,8 +67,9 @@ function MainRoutes() {
 }
 
 export default function App() {
+  const basename = routerBasename();
   return html`
-    <${HashRouter}>
+    <${HashRouter} basename=${basename}>
       <div className="app-shell">
         <aside className="sidebar">
           <div className="sidebar-brand">CS Study Lab</div>
