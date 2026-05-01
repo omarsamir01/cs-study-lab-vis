@@ -3,9 +3,10 @@ import {
   HashRouter,
   Routes,
   Route,
-  NavLink,
   Navigate,
   Outlet,
+  matchPath,
+  useLocation,
 } from "react-router-dom";
 import { motion } from "framer-motion";
 import { html } from "./htm.js";
@@ -27,31 +28,26 @@ import {
 } from "./screens/pages.js";
 
 /**
- * GitHub Pages serves project sites at /<repo>/...
- * HashRouter must use the same basename or @remix-run/router throws (history.ts invariant).
+ * Plain <a href="#/..."> avoids NavLink → useResolvedPath → resolveTo.
+ * With HashRouter on GitHub Pages, that chain can throw history invariants
+ * when combined with subdirectory hosting + basename. Hash paths never need basename.
+ *
+ * Assets still use <base href="/repo/"> injected in CI; HashRouter basename stays unset.
  */
-function routerBasename() {
-  const path = typeof window !== "undefined" ? window.location.pathname || "" : "";
-  const parts = path.split("/").filter(Boolean);
-  if (!parts.length) return "";
-  const first = parts[0];
-  if (first.includes(".")) return "";
-  return `/${first}`;
-}
-
 function NavItem({ to, color, children }) {
+  const { pathname } = useLocation();
+  const isActive =
+    !!matchPath({ path: to, end: true }, pathname === "" ? "/" : pathname);
+  const cls = "nav-btn" + (isActive ? " active" : "");
+  const href = "#" + to;
   return html`
-    <${NavLink}
-      to=${to}
-      className=${({ isActive }) => "nav-btn" + (isActive ? " active" : "")}
-    >
+    <a href=${href} className=${cls}>
       <span className="nav-dot" style=${{ background: color }} />
       <span>${children}</span>
-    </${NavLink}>
+    </a>
   `;
 }
 
-/** Shell must wrap children in a parent <Route> so NavLinks have route context (RR v6). */
 function AppShellLayout() {
   return html`
     <div className="app-shell">
@@ -113,9 +109,8 @@ function MainRoutes() {
 }
 
 export default function App() {
-  const basename = routerBasename();
   return html`
-    <${HashRouter} basename=${basename}>
+    <${HashRouter}>
       <${MainRoutes} />
     </${HashRouter}>
   `;
