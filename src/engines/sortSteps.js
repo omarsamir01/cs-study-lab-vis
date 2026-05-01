@@ -3,6 +3,8 @@
  * Matches logic from Lab_8_task.cpp
  */
 
+import { computeMergeDiagramPhases } from "../lib/mergeSortDiagram.js";
+
 /**
  * @typedef {{
  *   caption: string,
@@ -12,6 +14,20 @@
  *   radixShowDigitStrip?: boolean,
  *   shellGap?: number,
  *   shellPrevGap?: number | null,
+ *   mergeDiagramPhases?: Array<{ phase: string, chunks: number[][], caption: string }>,
+ *   mergeRevealExclusive?: number,
+ *   countingViz?: {
+ *    phase: string,
+ *    maxKey: number,
+ *    inputKeys: number[],
+ *    freq: number[],
+ *    output: Array<number|null>,
+ *    inputFocusIndex?: number | null,
+ *    countFocusIndex?: number | null,
+ *    outputFocusIndex?: number | null,
+ *    formula?: string | null,
+ *   },
+ *   radixViz?: Record<string, unknown>,
  * }} SortStep
  */
 
@@ -74,7 +90,17 @@ export function shellSortSteps(original) {
   const steps = [];
   const arr = [...original];
   const n = arr.length;
-  steps.push(step(arr, "Shell sort: insertion sort where compares are spaced by a gap that shrinks (here ⌊n/2⌋, then half, until 1)."));
+  const firstDiagramGap = n >= 2 ? Math.floor(n / 2) : null;
+  steps.push(
+    step(
+      arr,
+      "Shell sort: insertion sort where compares are spaced by a gap that shrinks (here ⌊n/2⌋, then half, until 1).",
+      {},
+      firstDiagramGap != null && firstDiagramGap > 0
+        ? { shellGap: firstDiagramGap, shellPrevGap: null }
+        : {}
+    )
+  );
 
   let prevGap = /** @type {number | null} */ (null);
   for (let gap = Math.floor(n / 2); gap > 0; gap = Math.floor(gap / 2)) {
@@ -191,7 +217,10 @@ export function heapSortSteps(original) {
   return steps;
 }
 
-function mergeWork(arr, left, mid, right, steps) {
+/** @param {() => Record<string, unknown>} [getMergeMeta] @param {() => void} [syncRevealBeforeSteps] */
+function mergeWork(arr, left, mid, right, steps, getMergeMeta, syncRevealBeforeSteps) {
+  const extra = getMergeMeta ?? (() => ({}));
+  syncRevealBeforeSteps?.();
   const n1 = mid - left + 1;
   const n2 = right - mid;
   const L = arr.slice(left, mid + 1);
@@ -199,39 +228,20 @@ function mergeWork(arr, left, mid, right, steps) {
   steps.push(
     step(
       arr,
-      `Merge: copy A[${left}…${mid}] → L and A[${mid + 1}…${right}] → R, then refill A[${left}…${right}] in order.`,
-      rangeHighlight(left, right)
+      `Merge A[${left}…${right}]: auxiliary L=[${L.join(", ")}], R=[${R.join(", ")}] — refill that span by two-pointer compares (stable).`,
+      rangeHighlight(left, right),
+      extra()
     )
   );
   let i = 0,
     j = 0,
     k = left;
   while (i < n1 && j < n2) {
-    const takeLeft = L[i] <= R[j];
-    steps.push(
-      step(
-        arr,
-        `At output [${k}]: smaller front is ${takeLeft ? `L (${L[i]})` : `R (${R[j]})`} ${takeLeft ? "≤" : "<"} ${takeLeft ? `R (${R[j]})` : `L (${L[i]})`} → write ${takeLeft ? L[i] : R[j]}.`,
-        { [k]: "highlight" }
-      )
-    );
-    if (takeLeft) arr[k++] = L[i++];
+    if (L[i] <= R[j]) arr[k++] = L[i++];
     else arr[k++] = R[j++];
   }
-  if (i < n1) {
-    steps.push(
-      step(arr, `Left run still has values — copy tail L[${i}..${n1 - 1}] into A in one streak (already ordered).`, {
-        [k]: "range",
-      })
-    );
-    while (i < n1) arr[k++] = L[i++];
-  }
-  if (j < n2) {
-    steps.push(
-      step(arr, `Right run still has values — copy tail R[${j}..${n2 - 1}] similarly.`, { [k]: "range" })
-    );
-    while (j < n2) arr[k++] = R[j++];
-  }
+  while (i < n1) arr[k++] = L[i++];
+  while (j < n2) arr[k++] = R[j++];
 }
 
 function rangeHighlight(a, b) {
@@ -242,113 +252,429 @@ function rangeHighlight(a, b) {
 }
 
 export function mergeSortSteps(original) {
+  /** @type {SortStep[]} */
   const steps = [];
   const arr = [...original];
-  steps.push(step(arr, "Merge sort: split the range, recurse on halves, merge two sorted runs back together."));
+  const phases = computeMergeDiagramPhases(original).phases;
+
+  /** exclusive end index: show phases[0 … mergeRevealExclusive−1]; grows with splits & completed merges */
+  let revealExclusive = phases.length ? 1 : 0;
+
+  /** @returns {Partial<SortStep>} */
+  const mm =
+    phases.length > 0
+      ? () => ({
+          mergeDiagramPhases: phases,
+          mergeRevealExclusive: revealExclusive,
+        })
+      : () => ({});
+
+  const firstConquerIdx = phases.findIndex((p) => p.phase === "merge" || p.phase === "sorted");
+
+  if (!arr.length) {
+    steps.push(step(arr, "Nothing to sort (empty input)."));
+    return steps;
+  }
+
+  if (arr.length === 1) {
+    revealExclusive = 1;
+    steps.push(
+      step(
+        arr,
+        "Merge sort: split the range, recurse on halves, merge two sorted runs back together.",
+        {},
+        mm()
+      )
+    );
+    revealExclusive = Math.max(phases.length, 1);
+    steps.push(step(arr, "Only one element — already sorted.", {}, mm()));
+    return steps;
+  }
+
+  steps.push(
+    step(arr, "Merge sort: split the range, recurse on halves, merge two sorted runs back together.", {}, mm())
+  );
+
+  let completedMerges = 0;
+
+  const divideRevealCap = Math.max(1, firstConquerIdx >= 0 ? firstConquerIdx : phases.length);
+
+  /** Keep conquer-phase rows visible during merge() micro-steps (reveal otherwise lags completedMerges). */
+  const syncRevealForMergeWork = () => {
+    if (!phases.length || firstConquerIdx < 0) return;
+    revealExclusive = Math.min(
+      Math.max(revealExclusive, firstConquerIdx + completedMerges + 1),
+      phases.length
+    );
+  };
 
   function ms(left, right) {
     if (left >= right) return;
     const mid = left + Math.floor((right - left) / 2);
+    /* Only grow the divide ladder while it is not full; never shrink reveal on later splits (e.g. right subtree). */
+    if (revealExclusive < divideRevealCap) {
+      revealExclusive += 1;
+    }
     steps.push(
       step(
         arr,
         `Split [${left}…${right}] into [${left}…${mid}] and [${mid + 1}…${right}]. Recurse on each half.`,
-        rangeHighlight(left, right)
+        rangeHighlight(left, right),
+        mm()
       )
     );
     ms(left, mid);
     ms(mid + 1, right);
-    mergeWork(arr, left, mid, right, steps);
-    steps.push(step(arr, `Range [${left}…${right}] is fully merged and sorted.`, rangeHighlight(left, right)));
+    mergeWork(arr, left, mid, right, steps, mm, syncRevealForMergeWork);
+    completedMerges += 1;
+    revealExclusive = Math.min(firstConquerIdx + completedMerges, phases.length);
+    const span = arr.slice(left, right + 1);
+    steps.push(
+      step(
+        arr,
+        `Range [${left}…${right}] merged and sorted → [${span.join(", ")}].`,
+        rangeHighlight(left, right),
+        mm()
+      )
+    );
   }
   ms(0, arr.length - 1);
-  steps.push(step(arr, "All levels merged — sort complete."));
+  revealExclusive = phases.length;
+  steps.push(step(arr, "All levels merged — sort complete.", {}, mm()));
   return steps;
 }
 
 export function countSortSteps(original) {
+  /** @type {SortStep[]} */
   const steps = [];
-  const arr = [...original];
+  const baseline = [...original];
+  let arr = [...original];
   const n = arr.length;
+  if (!n) {
+    steps.push(step(arr, "Nothing to sort (empty input)."));
+    return steps;
+  }
+
   let maxval = 0;
   for (let i = 0; i < n; i++) maxval = Math.max(maxval, arr[i]);
+  const m = maxval + 1;
+
+  /** @returns {Partial<SortStep>} */
+  const viz = /** @returns {Partial<SortStep>} */ (partial) => ({
+    countingViz: {
+      phase: partial.phase ?? "generic",
+      maxKey: partial.maxKey ?? maxval,
+      inputKeys:
+        partial.inputKeys && partial.inputKeys.length ? [...partial.inputKeys] : [...baseline],
+      freq: partial.freq != null ? [...partial.freq] : [...Array(m).fill(0)],
+      output:
+        partial.output != null
+          ? [...partial.output]
+          : Array.from({ length: n }, () => /** @type {number|null} */ (null)),
+      inputFocusIndex:
+        typeof partial.inputFocusIndex === "number" ? partial.inputFocusIndex : undefined,
+      countFocusIndex: typeof partial.countFocusIndex === "number" ? partial.countFocusIndex : undefined,
+      outputFocusIndex:
+        typeof partial.outputFocusIndex === "number" ? partial.outputFocusIndex : undefined,
+      formula:
+        typeof partial.formula === "string" ? partial.formula : undefined,
+    },
+  });
+
   steps.push(
     step(
       arr,
-      `Counting sort on values 0…${maxval}. Pass 1: scan the array once and tally how many of each key (frequency).`,
-      rangeHighlight(0, n - 1)
+      `Counting sort: keys in 0…${maxval}. Pass 1 — tally how many of each value (frequency table, length ${m}).`,
+      rangeHighlight(0, n - 1),
+      viz({
+        phase: "intro",
+        freq: Array(m).fill(0),
+        output: Array.from({ length: n }, () => null),
+        formula: undefined,
+      })
     )
   );
-  const fr = new Array(maxval + 1).fill(0);
+
+  const fr = new Array(m).fill(0);
   for (let i = 0; i < n; i++) fr[arr[i]]++;
   const tallyPreview = [];
   for (let v = 0; v <= maxval; v++) if (fr[v]) tallyPreview.push(`${v}→${fr[v]}`);
+
   steps.push(
     step(
       arr,
-      `Counts: ${tallyPreview.slice(0, 24).join(", ")}${tallyPreview.length > 24 ? ", …" : ""}. Next: prefix-sum so each bucket knows its last output slot.`,
-      {}
+      `Frequencies (before prefix): ${tallyPreview.slice(0, 32).join(", ")}${tallyPreview.length > 32 ? ", …" : ""}. Next: prefix-sum into cumulative positions.`,
+      {},
+      viz({
+        phase: "freq",
+        freq: [...fr],
+        output: Array.from({ length: n }, () => null),
+        formula: undefined,
+      })
     )
   );
+
   for (let i = 1; i <= maxval; i++) {
     fr[i] += fr[i - 1];
   }
+
   steps.push(
     step(
       arr,
-      `Pass 3: walk i = n−1 … 0 (backwards keeps stability). Each arr[i] is placed at fr[value]−1, then that count is decremented.`,
-      rangeHighlight(0, n - 1)
+      `Cumulative count array (prefix sums): each slot v holds how many keys are ≤ v — this gives the last output index for value v.`,
+      {},
+      viz({
+        phase: "cum",
+        freq: [...fr],
+        output: Array.from({ length: n }, () => null),
+        formula: undefined,
+      })
     )
   );
-  const sorted = new Array(n);
+
+  steps.push(
+    step(
+      arr,
+      `Pass 3 — walk i = n−1 … 0. For arr[i]=v, write to output[count[v] − 1], then decrement count[v] (stable, right-to-left).`,
+      {},
+      viz({
+        phase: "scatterIntro",
+        freq: [...fr],
+        output: Array.from({ length: n }, () => null),
+        formula: undefined,
+      })
+    )
+  );
+
+  const sorted = Array.from({ length: n }, () => /** @type {number|null} */ (null));
+  const frWorking = [...fr];
+
   for (let i = n - 1; i >= 0; i--) {
+    const stepNum = n - i;
     const v = arr[i];
-    const pos = fr[v] - 1;
+    const freqBeforeWrite = [...frWorking];
+    const cBefore = freqBeforeWrite[v];
+    const pos = cBefore - 1;
+    const formula = `${cBefore} − 1 = ${pos}`;
     sorted[pos] = v;
-    fr[v]--;
+    frWorking[v]--;
+
+    steps.push(
+      step(
+        arr,
+        `Scatter ${stepNum} / ${n}: arr[${i}] = ${v}. Cumulative count[${v}] = ${cBefore} ⇒ output slot ${pos} (${formula}); then decrement count[${v}].`,
+        { [i]: "highlight" },
+        viz({
+          phase: "scatter",
+          freq: freqBeforeWrite,
+          output: [...sorted],
+          inputFocusIndex: i,
+          countFocusIndex: v,
+          outputFocusIndex: pos,
+          formula,
+        })
+      )
+    );
   }
-  for (let i = 0; i < n; i++) arr[i] = sorted[i];
-  steps.push(step(arr, "Keys scattered into sorted order — counting sort done (O(n + m) time, m = value range)."));
+
+  for (let j = 0; j < n; j++) arr[j] = /** @type {number} */ (sorted[j]);
+
+  steps.push(
+    step(
+      arr,
+      `Done — counting sort finished (time O(n + m), space O(n + m) with m = max key + 1).`,
+      {},
+      viz({
+        phase: "done",
+        freq: [...frWorking],
+        output: sorted.map((x) => /** @type {number} */ (x)),
+        formula: undefined,
+      })
+    )
+  );
+
   return steps;
 }
 
-function countDigit(arr, scale, steps) {
+/** In-place one radix digit pass (stable counting sort on digit at scale). Lab parity. */
+function radixStableDigitPassInPlace(arr, scale) {
   const n = arr.length;
   const output = new Array(n);
   const frq = new Array(10).fill(0);
-  for (let i = 0; i < n; i++) frq[Math.floor(arr[i] / scale) % 10]++;
-  for (let i = 1; i < 10; i++) frq[i] += frq[i - 1];
+  for (let i = 0; i < n; i++) {
+    frq[Math.floor(arr[i] / scale) % 10]++;
+  }
+  for (let i = 1; i < 10; i++) {
+    frq[i] += frq[i - 1];
+  }
   for (let i = n - 1; i >= 0; i--) {
     const d = Math.floor(arr[i] / scale) % 10;
     output[frq[d] - 1] = arr[i];
     frq[d]--;
   }
-  for (let i = 0; i < n; i++) arr[i] = output[i];
-  steps.push(
-    step(
-      arr,
-      `Digit pass (place value ${scale}): stable counting sort on (value ÷ ${scale}) mod 10. Row under bars shows that digit per index.`,
-      undefined,
-      {
-        radixScale: scale,
-        radixShowDigitStrip: true,
-      }
-    )
-  );
+  for (let i = 0; i < n; i++) {
+    arr[i] = output[i];
+  }
+}
+
+function radixPlaceLabel(scale) {
+  switch (scale) {
+    case 1:
+      return "ones";
+    case 10:
+      return "tens";
+    case 100:
+      return "hundreds";
+    case 1000:
+      return "thousands";
+    default:
+      return `place ${scale}`;
+  }
+}
+
+/** @param {number[]} slice */
+function radixBuildBucketsStableLR(slice, scale) {
+  /** @type {number[][]} */
+  const buckets = Array.from({ length: 10 }, () => []);
+  for (let i = 0; i < slice.length; i++) {
+    const v = slice[i];
+    const d = Math.floor(Math.abs(v) / scale) % 10;
+    buckets[d].push(v);
+  }
+  return buckets;
 }
 
 export function radixSortSteps(original) {
+  /** @type {SortStep[]} */
   const steps = [];
-  const arr = [...original];
-  let maxN = arr[0];
-  for (let i = 1; i < arr.length; i++) if (arr[i] > maxN) maxN = arr[i];
-  steps.push(
-    step(arr, `Radix LSD base-10, max=${maxN}. One stable digit pass per decimal place (ones, tens, …).`)
-  );
-  for (let scale = 1; Math.floor(maxN / scale) > 0; scale *= 10) {
-    countDigit(arr, scale, steps);
+  let arr = [...original];
+  const n = arr.length;
+
+  /** @returns {Partial<SortStep>} */
+  const rv = (partial) =>
+    ({
+      radixViz: {
+        phase: partial.phase ?? "radix",
+        keys: partial.keys != null ? [...partial.keys] : [],
+        underlineScale:
+          typeof partial.underlineScale === "number"
+            ? partial.underlineScale
+            : partial.underlineScale === null
+              ? null
+              : undefined,
+        buckets: partial.buckets != null ? partial.buckets.map((b) => [...b]) : Array.from({ length: 10 }, () => []),
+        listAfter: partial.listAfter != null ? [...partial.listAfter] : null,
+        placeLabel: String(partial.placeLabel ?? ""),
+        scale: typeof partial.scale === "number" ? partial.scale : 1,
+        maxKeyDigits: typeof partial.maxKeyDigits === "number" ? partial.maxKeyDigits : 1,
+      },
+    });
+
+  if (!n) {
+    steps.push(step(arr, "Nothing to sort (empty input)."));
+    return steps;
   }
-  steps.push(step(arr, "Radix complete (d passes, k=10 buckets per pass)."));
+
+  let maxN = arr[0];
+  for (let i = 1; i < n; i++) if (arr[i] > maxN) maxN = arr[i];
+
+  const maxDigits = Math.max(...arr.map((x) => String(Math.abs(Math.trunc(Number(x)) || 0)).length || 1), 1);
+
+  /** @type {number[]} */
+  const scales = [];
+  for (let s = 1; s <= Math.max(maxN, 1); s *= 10) {
+    scales.push(s);
+    if (s > Math.max(maxN, 1) * 10) break;
+    if (s > 1e15) break;
+  }
+
+  /** @returns {number[][]} */
+  const emptyBuckets = () => Array.from({ length: 10 }, () => /** @type {number[]} */ ([]));
+
+  const totalPasses = scales.length;
+
+  steps.push(
+    step(
+      arr,
+      `Radix LSD base-10, max=${maxN}: ${totalPasses} stable counting-sort passes (place values ${scales.join(", ")}). Numbers enqueue left→right into queues by digit (infographic row).`,
+      {},
+      rv({
+        phase: "radixIntro",
+        keys: [...arr],
+        underlineScale: undefined,
+        buckets: emptyBuckets(),
+        listAfter: null,
+        placeLabel: "—",
+        scale: scales[0] ?? 1,
+        maxKeyDigits: maxDigits,
+      })
+    )
+  );
+
+  let pi = 0;
+  for (const scale of scales) {
+    pi++;
+    const before = [...arr];
+    const lbl = radixPlaceLabel(scale);
+
+    steps.push(
+      step(
+        arr,
+        `Pass ${pi}/${totalPasses} (${lbl}): underline that digit column, enqueue each key left→right into Queue-0…9.`,
+        {},
+        rv({
+          phase: "passPrep",
+          keys: before,
+          underlineScale: scale,
+          buckets: emptyBuckets(),
+          listAfter: null,
+          placeLabel: lbl,
+          scale,
+          maxKeyDigits: maxDigits,
+        })
+      )
+    );
+
+    const buckets = radixBuildBucketsStableLR(before, scale);
+    radixStableDigitPassInPlace(arr, scale);
+
+    steps.push(
+      step(
+        arr,
+        `Pass ${pi}: read queues 0→9 — order is [${buckets.flatMap((b) => b).join(", ")}] (matches stable counting-sort refill of A[])`,
+        {},
+        rv({
+          phase: "bucketsFilled",
+          keys: before,
+          underlineScale: scale,
+          buckets,
+          listAfter: [...arr],
+          placeLabel: lbl,
+          scale,
+          maxKeyDigits: maxDigits,
+        })
+      )
+    );
+  }
+
+  steps.push(
+    step(
+      arr,
+      `Radix complete — all digits processed.`,
+      {},
+      rv({
+        phase: "radixDone",
+        keys: [...arr],
+        underlineScale: undefined,
+        buckets: emptyBuckets(),
+        listAfter: [...arr],
+        placeLabel: "sorted",
+        scale: scales[scales.length - 1] ?? 1,
+        maxKeyDigits: maxDigits,
+      })
+    )
+  );
+
   return steps;
 }
 

@@ -54,7 +54,7 @@ function useParsedArray(defaults = DEMO_ARRAY) {
   return { inputStr, setInputStr, arr, load };
 }
 
-/** @param {{ fn: (a: number[]) => { caption: string, arr: number[], highlight?: Record<number,string>}[] }} props */
+/** @param {{ fn: (a: number[]) => any, title: string, subtitle: string, tag: string, chips: any[] }} props */
 function SortWrap({ fn, title, subtitle, tag, chips }) {
   const { inputStr, setInputStr, arr, load } = useParsedArray();
   const steps = useMemo(() => fn(arr), [fn, arr]);
