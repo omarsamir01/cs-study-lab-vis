@@ -3,14 +3,25 @@
  * Matches logic from Lab_8_task.cpp
  */
 
-/** @typedef {{ caption: string, arr: number[], highlight?: Record<number,string> }} SortStep */
+/**
+ * @typedef {{
+ *   caption: string,
+ *   arr: number[],
+ *   highlight?: Record<number,string>,
+ *   radixScale?: number,
+ *   radixShowDigitStrip?: boolean,
+ *   shellGap?: number,
+ *   shellPrevGap?: number | null,
+ * }} SortStep
+ */
 
-/** @param {number[]} arr @param {string} caption @param {Record<number,string>|undefined} highlight */
-function step(arr, caption, highlight) {
+/** @param {number[]} arr @param {string} caption @param {Record<number,string>|undefined} highlight @param {Partial<SortStep>} [extra] */
+function step(arr, caption, highlight, extra = {}) {
   return {
     caption,
     arr: [...arr],
-    highlight: highlight ? { ...highlight } : {},
+    highlight: highlight && Object.keys(highlight).length ? { ...highlight } : {},
+    ...extra,
   };
 }
 
@@ -20,23 +31,29 @@ export function insertionSortSteps(original) {
   const steps = [];
   const arr = [...original];
   const n = arr.length;
-  steps.push(step(arr, "Start: insertion sort grows a sorted prefix; each new card shifts left until it fits (Lab insertion sort)."));
+  steps.push(
+    step(arr, "Insertion sort: extend a sorted prefix left-to-right; each new key walks left past larger neighbors.")
+  );
 
   for (let i = 1; i < n; i++) {
     const num = arr[i];
-    steps.push(
-      step(
-        arr,
-        `Pick element at index ${i} (value ${num}) to insert into the sorted region [0..${i - 1}].`,
-        { [i]: "highlight" }
-      )
-    );
     let j = i - 1;
+    if (j < 0 || arr[j] <= num) {
+      steps.push(
+        step(
+          arr,
+          `i=${i}: key ${num}. Left neighbor ≤ key — nothing to shift; [0..${i}] already sorted.`,
+          { [i]: "pivot" }
+        )
+      );
+      continue;
+    }
+    steps.push(step(arr, `i=${i}: key ${num}. Slide larger elements one step right until a smaller (or start) is found.`, { [i]: "highlight" }));
     while (j >= 0 && arr[j] > num) {
       steps.push(
         step(
           arr,
-          `Compare ${num} with arr[${j}] = ${arr[j]}. Since ${arr[j]} > ${num}, shift ${arr[j]} right.`,
+          `Shift ${arr[j]} from [${j}] → [${j + 1}] (key ${num} continues left).`,
           { [j]: "highlight", [j + 1]: "range" }
         )
       );
@@ -45,14 +62,10 @@ export function insertionSortSteps(original) {
     }
     arr[j + 1] = num;
     steps.push(
-      step(
-        arr,
-        `Placed ${num} at index ${j + 1}. Sorted prefix is now [0..${i}].`,
-        { [j + 1]: "pivot" }
-      )
+      step(arr, `Insert ${num} at [${j + 1}]. Sorted prefix is now indices 0…${i}.`, { [j + 1]: "pivot" })
     );
   }
-  steps.push(step(arr, "Done: O(n²) comparisons/shifts worst case; in-place O(1) extra space."));
+  steps.push(step(arr, "Done. Worst-case O(n²) shifts; only O(1) extra space."));
   return steps;
 }
 
@@ -61,38 +74,60 @@ export function shellSortSteps(original) {
   const steps = [];
   const arr = [...original];
   const n = arr.length;
-  steps.push(
-    step(
-      arr,
-      "Shell sort: generalized insertion sort with gap sequence (here gap starts at ⌊n/2⌋ and halves, per your lab)."
-    )
-  );
+  steps.push(step(arr, "Shell sort: insertion sort where compares are spaced by a gap that shrinks (here ⌊n/2⌋, then half, until 1)."));
 
+  let prevGap = /** @type {number | null} */ (null);
   for (let gap = Math.floor(n / 2); gap > 0; gap = Math.floor(gap / 2)) {
-    steps.push(step(arr, `New gap = ${gap}. Sorting interleaved subsequences spaced by ${gap}.`));
+    const gapMeta = { shellGap: gap, shellPrevGap: prevGap };
+    steps.push(
+      step(
+        arr,
+        `Gap ${gap}${prevGap != null ? ` (previous gap was ${prevGap})` : ""}: every subsequence {i, i+${gap}, i+2·${gap}, …} is insertion-sorted.`,
+        {},
+        gapMeta
+      )
+    );
     for (let i = gap; i < n; i++) {
-      let temp = arr[i];
+      const temp = arr[i];
       let j = i;
+      if (arr[j - gap] <= temp) {
+        steps.push(
+          step(
+            arr,
+            `Gap ${gap}: ${temp} at [${i}] — gap-left neighbor is not larger; skip.`,
+            { [i]: "pivot" },
+            gapMeta
+          )
+        );
+        continue;
+      }
       steps.push(
-        step(arr, `Insert arr[${i}] = ${temp} into its gap-${gap} subsequence.`, {
-          [i]: "highlight",
-        })
+        step(
+          arr,
+          `Gap ${gap}: treat ${temp} at [${i}] as the key; move left in steps of ${gap} while the slot ${gap} away is larger.`,
+          { [i]: "highlight" },
+          gapMeta
+        )
       );
       while (j >= gap && arr[j - gap] > temp) {
         steps.push(
-          step(arr, `${arr[j - gap]} at j-${gap} is greater than ${temp}; slide it forward by gap.`, {
-            [j]: "highlight",
-            [j - gap]: "range",
-          })
+          step(
+            arr,
+            `Move value ${arr[j - gap]} from [${j - gap}] down to [${j}].`,
+            { [j]: "highlight", [j - gap]: "range" },
+            gapMeta
+          )
         );
         arr[j] = arr[j - gap];
         j -= gap;
       }
       arr[j] = temp;
+      steps.push(step(arr, `Park ${temp} at [${j}].`, { [j]: "pivot" }, gapMeta));
     }
-    steps.push(step(arr, `Finished pass for gap ${gap}. Partial order tighter.`));
+    steps.push(step(arr, `End of gap-${gap} pass.`, {}, gapMeta));
+    prevGap = gap;
   }
-  steps.push(step(arr, "Shell sort complete. Complexity depends on gap sequence."));
+  steps.push(step(arr, "Shell sort finished."));
   return steps;
 }
 
@@ -108,18 +143,24 @@ export function heapSortSteps(original) {
       let largest = idx;
       const l = 2 * idx + 1;
       const r = 2 * idx + 2;
+      const leftStr = l < size ? `L=${arr[l]}@[${l}]` : "no left child";
+      const rightStr = r < size ? `R=${arr[r]}@[${r}]` : "no right child";
       steps.push(
-        step(arr, `Sift-down at index ${idx} (heap size ${size}). Compare with children.`, {
-          [idx]: "pivot",
-          ...(l < size ? { [l]: "highlight" } : {}),
-          ...(r < size ? { [r]: "highlight" } : {}),
-        })
+        step(
+          arr,
+          `Sift at [${idx}] (max-heap of ${size} nodes). Parent=${arr[idx]}; ${leftStr}; ${rightStr}. Pick larger child to swap with if it beats parent.`,
+          {
+            [idx]: "pivot",
+            ...(l < size ? { [l]: "highlight" } : {}),
+            ...(r < size ? { [r]: "highlight" } : {}),
+          }
+        )
       );
       if (l < size && arr[l] > arr[largest]) largest = l;
       if (r < size && arr[r] > arr[largest]) largest = r;
       if (largest === idx) break;
       steps.push(
-        step(arr, `Swap parent ${arr[idx]} ↔ child ${arr[largest]} (${largest}).`, {
+        step(arr, `Child [${largest}]=${arr[largest]} wins — swap with parent [${idx}].`, {
           [idx]: "highlight",
           [largest]: "highlight",
         })
@@ -130,17 +171,15 @@ export function heapSortSteps(original) {
   }
 
   steps.push(
-    step(arr, "Build max-heap: sift down each non-leaf from ⌊n/2⌋−1 … 0 (Lab heap sort heapify).")
+    step(arr, "Heapify: starting at the last parent ⌊n/2⌋−1, sift each node down to form a max-heap.")
   );
   for (let i = Math.floor(n / 2) - 1; i >= 0; i--) {
-    steps.push(step(arr, `Build phase: sift down subtree rooted at ${i}.`));
     siftDown(n, i);
-    steps.push(step(arr, `Heap property strengthened at root ${i}.`));
   }
-  steps.push(step(arr, "Max-heap built. Extract-max: swap root with last element, sift down."));
+  steps.push(step(arr, "Max-heap ready. Repeatedly: swap root (max) with the last unsorted slot, shrink heap, sift new root down."));
   for (let i = n - 1; i > 0; i--) {
     steps.push(
-      step(arr, `Swap max at root with arr[${i}]; sorted tail starts at ${i}.`, {
+      step(arr, `Extract max: swap [0] with [${i}] (sorted region grows at the right).`, {
         0: "highlight",
         [i]: "range",
       })
@@ -148,7 +187,7 @@ export function heapSortSteps(original) {
     [arr[0], arr[i]] = [arr[i], arr[0]];
     siftDown(i, 0);
   }
-  steps.push(step(arr, "Heap sort done: O(n log n); Lab notes O(log n) stack for recursive heapify in C++."));
+  steps.push(step(arr, "Heap sort complete."));
   return steps;
 }
 
@@ -160,7 +199,7 @@ function mergeWork(arr, left, mid, right, steps) {
   steps.push(
     step(
       arr,
-      `Merge indices [${left},${mid}] with [${mid + 1},${right}]: copy to temp L and R.`,
+      `Merge: copy A[${left}…${mid}] → L and A[${mid + 1}…${right}] → R, then refill A[${left}…${right}] in order.`,
       rangeHighlight(left, right)
     )
   );
@@ -172,20 +211,26 @@ function mergeWork(arr, left, mid, right, steps) {
     steps.push(
       step(
         arr,
-        `Merge: compare L[${i}]=${L[i]} vs R[${j}]=${R[j]} — take ${takeLeft ? `L → ${L[i]}` : `R → ${R[j]}`}.`,
+        `At output [${k}]: smaller front is ${takeLeft ? `L (${L[i]})` : `R (${R[j]})`} ${takeLeft ? "≤" : "<"} ${takeLeft ? `R (${R[j]})` : `L (${L[i]})`} → write ${takeLeft ? L[i] : R[j]}.`,
         { [k]: "highlight" }
       )
     );
     if (takeLeft) arr[k++] = L[i++];
     else arr[k++] = R[j++];
   }
-  while (i < n1) {
-    steps.push(step(arr, `Flush rest of L at k=${k}.`, { [k]: "range" }));
-    arr[k++] = L[i++];
+  if (i < n1) {
+    steps.push(
+      step(arr, `Left run still has values — copy tail L[${i}..${n1 - 1}] into A in one streak (already ordered).`, {
+        [k]: "range",
+      })
+    );
+    while (i < n1) arr[k++] = L[i++];
   }
-  while (j < n2) {
-    steps.push(step(arr, `Flush rest of R at k=${k}.`, { [k]: "range" }));
-    arr[k++] = R[j++];
+  if (j < n2) {
+    steps.push(
+      step(arr, `Right run still has values — copy tail R[${j}..${n2 - 1}] similarly.`, { [k]: "range" })
+    );
+    while (j < n2) arr[k++] = R[j++];
   }
 }
 
@@ -199,21 +244,25 @@ function rangeHighlight(a, b) {
 export function mergeSortSteps(original) {
   const steps = [];
   const arr = [...original];
-  steps.push(step(arr, "Merge sort: divide range, sort halves, merge sorted runs (Lab merge sort)."));
+  steps.push(step(arr, "Merge sort: split the range, recurse on halves, merge two sorted runs back together."));
 
   function ms(left, right) {
     if (left >= right) return;
     const mid = left + Math.floor((right - left) / 2);
     steps.push(
-      step(arr, `Divide [${left},${right}] at mid=${mid}.`, rangeHighlight(left, right))
+      step(
+        arr,
+        `Split [${left}…${right}] into [${left}…${mid}] and [${mid + 1}…${right}]. Recurse on each half.`,
+        rangeHighlight(left, right)
+      )
     );
     ms(left, mid);
     ms(mid + 1, right);
     mergeWork(arr, left, mid, right, steps);
-    steps.push(step(arr, `Merged [${left},${right}] is sorted.`, rangeHighlight(left, right)));
+    steps.push(step(arr, `Range [${left}…${right}] is fully merged and sorted.`, rangeHighlight(left, right)));
   }
   ms(0, arr.length - 1);
-  steps.push(step(arr, "Complete: O(n log n) time, O(n) auxiliary for merges."));
+  steps.push(step(arr, "All levels merged — sort complete."));
   return steps;
 }
 
@@ -224,34 +273,42 @@ export function countSortSteps(original) {
   let maxval = 0;
   for (let i = 0; i < n; i++) maxval = Math.max(maxval, arr[i]);
   steps.push(
-    step(arr, `Counting sort: max value ${maxval}. Build frequency array of length ${maxval + 1}.`)
+    step(
+      arr,
+      `Counting sort on values 0…${maxval}. Pass 1: scan the array once and tally how many of each key (frequency).`,
+      rangeHighlight(0, n - 1)
+    )
   );
   const fr = new Array(maxval + 1).fill(0);
-  for (let i = 0; i < n; i++) {
-    fr[arr[i]]++;
-    steps.push(
-      step(arr, `Count++ for value ${arr[i]}`, { [i]: "highlight" })
-    );
-  }
+  for (let i = 0; i < n; i++) fr[arr[i]]++;
+  const tallyPreview = [];
+  for (let v = 0; v <= maxval; v++) if (fr[v]) tallyPreview.push(`${v}→${fr[v]}`);
   steps.push(
-    step(arr, `Frequency built: [${fr.slice(0, Math.min(fr.length, 20)).join(",")}${fr.length > 20 ? "…" : ""}]`)
+    step(
+      arr,
+      `Counts: ${tallyPreview.slice(0, 24).join(", ")}${tallyPreview.length > 24 ? ", …" : ""}. Next: prefix-sum so each bucket knows its last output slot.`,
+      {}
+    )
   );
   for (let i = 1; i <= maxval; i++) {
     fr[i] += fr[i - 1];
   }
-  steps.push(step(arr, "Prefix sums: fr[i] = last index where value i appears in output."));
+  steps.push(
+    step(
+      arr,
+      `Pass 3: walk i = n−1 … 0 (backwards keeps stability). Each arr[i] is placed at fr[value]−1, then that count is decremented.`,
+      rangeHighlight(0, n - 1)
+    )
+  );
   const sorted = new Array(n);
   for (let i = n - 1; i >= 0; i--) {
     const v = arr[i];
     const pos = fr[v] - 1;
     sorted[pos] = v;
     fr[v]--;
-    steps.push(
-      step(arr, `Place ${v} from end of input into output index ${pos} (stable backwards walk).`, { [i]: "highlight" })
-    );
   }
   for (let i = 0; i < n; i++) arr[i] = sorted[i];
-  steps.push(step(arr, "Done counting sort O(n+m) when range m is modest."));
+  steps.push(step(arr, "Keys scattered into sorted order — counting sort done (O(n + m) time, m = value range)."));
   return steps;
 }
 
@@ -259,7 +316,6 @@ function countDigit(arr, scale, steps) {
   const n = arr.length;
   const output = new Array(n);
   const frq = new Array(10).fill(0);
-  steps.push(step(arr, `Radix digit pass: scale=${scale}, bucket by (value/scale)%10.`));
   for (let i = 0; i < n; i++) frq[Math.floor(arr[i] / scale) % 10]++;
   for (let i = 1; i < 10; i++) frq[i] += frq[i - 1];
   for (let i = n - 1; i >= 0; i--) {
@@ -268,7 +324,17 @@ function countDigit(arr, scale, steps) {
     frq[d]--;
   }
   for (let i = 0; i < n; i++) arr[i] = output[i];
-  steps.push(step(arr, `After stable count sort on digit (${scale}s place).`));
+  steps.push(
+    step(
+      arr,
+      `Digit pass (place value ${scale}): stable counting sort on (value ÷ ${scale}) mod 10. Row under bars shows that digit per index.`,
+      undefined,
+      {
+        radixScale: scale,
+        radixShowDigitStrip: true,
+      }
+    )
+  );
 }
 
 export function radixSortSteps(original) {
@@ -276,11 +342,13 @@ export function radixSortSteps(original) {
   const arr = [...original];
   let maxN = arr[0];
   for (let i = 1; i < arr.length; i++) if (arr[i] > maxN) maxN = arr[i];
-  steps.push(step(arr, `Radix sort LSD base-10: max=${maxN}. Each pass is a counting sort on one digit.`));
+  steps.push(
+    step(arr, `Radix LSD base-10, max=${maxN}. One stable digit pass per decimal place (ones, tens, …).`)
+  );
   for (let scale = 1; Math.floor(maxN / scale) > 0; scale *= 10) {
     countDigit(arr, scale, steps);
   }
-  steps.push(step(arr, "Radix complete: O(d·(n+k)) with d digits, k=10."));
+  steps.push(step(arr, "Radix complete (d passes, k=10 buckets per pass)."));
   return steps;
 }
 

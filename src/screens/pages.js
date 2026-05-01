@@ -1,7 +1,12 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { html } from "../htm.js";
 import SortingPanel from "../components/SortingPanel.js";
+import TreeChart from "../components/TreeChart.js";
+import HeapChart from "../components/HeapChart.js";
+import { cloneInsertBST, nextBstIdFactory } from "../engines/bst.js";
+import { inorderIds, postorderIds, preorderIds } from "../lib/treeLayout.js";
+import { rbInsert, rbClear } from "../engines/rbTree.js";
 import {
   DEMO_ARRAY,
   insertionSortSteps,
@@ -192,49 +197,68 @@ export function Home() {
 
 export function LinkedLists() {
   const [mode, setMode] = useState("single");
-  const [values, setValues] = useState([12, 5, 8]);
-  const [lastOp, setLastOp] = useState("Push back 21");
-  function pushFront() {
-    const v = Math.floor(Math.random() * 40 + 1);
-    setValues((xs) => [v, ...xs]);
-    setLastOp(`Push front ${v}`);
+  const nid = useRef(3);
+  /** @type {[{ id: string, val: number }]} */
+  const [cells, setCells] = useState([
+    { id: "n0", val: 12 },
+    { id: "n1", val: 5 },
+    { id: "n2", val: 8 },
+  ]);
+  const [inp, setInp] = useState("");
+
+  function parseTyped() {
+    const v = parseInt(String(inp).trim(), 10);
+    return Number.isFinite(v) ? v : null;
   }
-  function pushBack() {
-    const v = Math.floor(Math.random() * 40 + 1);
-    setValues((xs) => [...xs, v]);
-    setLastOp(`Push back ${v}`);
+
+  function pushFront(useTyped) {
+    const t = useTyped ? parseTyped() : null;
+    const v = t != null ? t : Math.floor(Math.random() * 40 + 1);
+    if (useTyped && t === null) return;
+    if (useTyped) setInp("");
+    const id = `n${nid.current++}`;
+    setCells((xs) => [{ id, val: v }, ...xs]);
+  }
+  function pushBack(useTyped) {
+    const t = useTyped ? parseTyped() : null;
+    const v = t != null ? t : Math.floor(Math.random() * 40 + 1);
+    if (useTyped && t === null) return;
+    if (useTyped) setInp("");
+    const id = `n${nid.current++}`;
+    setCells((xs) => [...xs, { id, val: v }]);
   }
   function popFront() {
-    setValues((xs) => xs.slice(1));
-    setLastOp("Pop front");
+    setCells((xs) => xs.slice(1));
   }
   function popBack() {
-    setValues((xs) => xs.slice(0, -1));
-    setLastOp("Pop back");
+    setCells((xs) => xs.slice(0, -1));
   }
   return html`
     <div className="panel">
       <h1>${mode === "single" ? "Singly Linked List" : "Doubly Linked List"}</h1>
       <p className="subtitle">
-        Nodes store data plus next (and prev when doubly). Traversal is sequential:
-        singly saves memory; doubly allows O(1) removal if you hold a pointer—visual shows logical links.
+        Each node remembers one value plus the next hop (prev & next when doubly). Arrows visualize the traversal order students follow on paper exams.
       </p>
       <div className="controls">
+        <span className="slider-row">Value <input type="number" placeholder="typed int" style=${{ width: 110 }}
+          value=${inp} onChange=${(e) => setInp(e.target.value)} /></span>
         <button className=${`btn btn-ghost ${mode === "single" ? "btn-accent" : ""}`} onClick=${() => setMode("single")}>
           Singly
         </button>
         <button className=${`btn btn-ghost ${mode === "doubly" ? "btn-accent" : ""}`} onClick=${() => setMode("doubly")}>
           Doubly
         </button>
-        <button className="btn btn-primary" onClick=${pushFront}>Push front</button>
-        <button className="btn btn-primary" onClick=${pushBack}>Push back</button>
+        <button className="btn btn-primary" onClick=${() => pushFront(true)}>Push front typed</button>
+        <button className="btn btn-primary" onClick=${() => pushBack(true)}>Push back typed</button>
+        <button className="btn btn-primary" onClick=${() => pushFront(false)}>Push front rnd</button>
+        <button className="btn btn-primary" onClick=${() => pushBack(false)}>Push back rnd</button>
         <button className="btn btn-ghost" onClick=${popFront}>Pop front</button>
         <button className="btn btn-ghost" onClick=${popBack}>Pop back</button>
       </div>
       <motion.div layout className="ll-row">
-        ${values.map(
-          (v, i) => html`
-            <${React.Fragment} key=${v + "-" + i}>
+        ${cells.map(
+          (cell, i) => html`
+            <${React.Fragment} key=${cell.id}>
               <${motion.div}
                 layout
                 initial=${{ opacity: 0, x: -16 }}
@@ -242,20 +266,20 @@ export function LinkedLists() {
                 transition=${{ delay: i * 0.04 }}
                 className="node-box active"
               >
-                ${v}
+                ${cell.val}
               </${motion.div}>
-              ${i < values.length - 1
+              ${i < cells.length - 1
                 ? html`<${LinkArrowGlue} doubly=${mode === "doubly"} />`
                 : html`<span className="ll-tail">∅ nil</span>`}
             </${React.Fragment}>
           `
         )}
       </motion.div>
-      <p className="step-caption">${lastOp}</p>
+      <div className="callout-soft">Use typed pushes for exam-style traces; rnd keeps demos lively.</div>
       <div className="prose">
         <ul>
-          <li><b>Singly:</b> one pointer per node—simple, but no backward walk without scanning.</li>
-          <li><b>Doubly:</b> extra prev pointer—list iterators and LRU caches love this tradeoff.</li>
+          <li><b>Singly:</b> one direction—smallest memory footprint.</li>
+          <li><b>Doubly:</b> faint reverse arrow sketches the extra prev link.</li>
         </ul>
       </div>
     </div>
@@ -263,57 +287,78 @@ export function LinkedLists() {
 }
 
 export function StackPage() {
-  const [s, setS] = useState([3, 7, 1]);
-  const push = () => {
-    const v = Math.floor(Math.random() * 20 + 1);
-    setS((x) => [...x, v]);
+  const [s, setS] = useState([
+    { id: "s0", v: 3 },
+    { id: "s1", v: 7 },
+    { id: "s2", v: 1 },
+  ]);
+  const sid = useRef(10);
+  const [inp, setInp] = useState("");
+  const pushRand = () => {
+    const t = parseInt(inp.trim(), 10);
+    const v = Number.isFinite(t) ? t : Math.floor(Math.random() * 20 + 1);
+    if (!Number.isFinite(t)) setInp("");
+    else setInp("");
+    setS((x) => [...x, { id: `s${sid.current++}`, v }]);
   };
   const pop = () => setS((x) => x.slice(0, -1));
   return html`
     <div className="panel">
       <h1>Stack (LIFO)</h1>
-      <p className="subtitle">push adds on top; pop removes the most recent—think call stacks, DFS, undo buffers.</p>
+      <p className="subtitle">push piles on TOP; pop peels that same tier—everything below waits.</p>
       <div className="controls">
-        <button className="btn btn-primary" onClick=${push}>Push</button>
+        <span className="slider-row"
+          ><input type="number" placeholder="value" style=${{ width: 100 }} value=${inp}
+            onChange=${(e) => setInp(e.target.value)} /></span>
+        <button className="btn btn-primary" onClick=${pushRand}>Push typed (or rnd if blank)</button>
         <button className="btn btn-ghost" onClick=${pop}>Pop</button>
       </div>
-      <div style=${{ display: "flex", gap: "1.5rem", alignItems: "flex-end" }}>
-        <div className="stack-diagram">
+      <div className="stack-page-stage">
+        <div className="stack-diagram-visual">
           <div className="stack-guide">
-            <span className="guide-label">Push & pop here</span>
-            <span className="stack-arrow-down">▼</span>
-            <span className="guide-label">TOP</span>
+            <span className="guide-label">TOP of stack →</span>
+            <span className="guide-label subtle">Push / Pop here</span>
+            <span className="stack-arrow-to-top">▲</span>
           </div>
-          <div className="deck">
-            ${[...s].reverse().map((v, i) =>
-              html`<div className="deck-item" key=${`s-${s.length}-${i}-${v}`}>${v}</div>`
+          <div className="deck stack-deck">
+            ${[...s].reverse().map(
+              (cell) => html`<div className="deck-item stack-disk" key=${cell.id}>${cell.v}</div>`
             )}
           </div>
-        </div>
-        <div className="prose">
-          <p>
-            <strong>Last in, first out:</strong> visualize the call stack—new items compress older ones downward; pop always
-            peels the top layer.
-          </p>
+          <span className="guide-label stack-bottom-label">BOTTOM (first pushed)</span>
         </div>
       </div>
+      <p className="step-caption stack-page-note">
+        Blank push fills in a random drill value unless you type a number. Listed top→bottom matches the pile: newest on top.
+      </p>
     </div>
   `;
 }
 
 export function QueuePage() {
-  const [q, setQ] = useState([4, 9, 2]);
+  const qid = useRef(5);
+  const [q, setQ] = useState([
+    { id: "q0", v: 4 },
+    { id: "q1", v: 9 },
+    { id: "q2", v: 2 },
+  ]);
+  const [inp, setInp] = useState("");
   const enqueue = () => {
-    const v = Math.floor(Math.random() * 20 + 1);
-    setQ((x) => [...x, v]);
+    const t = parseInt(inp.trim(), 10);
+    const v = Number.isFinite(t) ? t : Math.floor(Math.random() * 20 + 1);
+    setInp("");
+    setQ((x) => [...x, { id: `q${qid.current++}`, v }]);
   };
   const dequeue = () => setQ((x) => x.slice(1));
   return html`
     <div className="panel">
       <h1>Queue (FIFO)</h1>
-      <p className="subtitle">Enqueue at rear, dequeue from front—BFS graphs, buffering, fairness scheduling.</p>
+      <p className="subtitle">enqueue grows the rear tail; dequeue always pops the farthest-front cell.</p>
       <div className="controls">
-        <button className="btn btn-primary" onClick=${enqueue}>Enqueue</button>
+        <span className="slider-row"
+          ><input type="number" placeholder="enqueue value" style=${{ width: 120 }} value=${inp}
+            onChange=${(e) => setInp(e.target.value)} /></span>
+        <button className="btn btn-primary" onClick=${enqueue}>Enqueue typed (or rnd blank)</button>
         <button className="btn btn-ghost" onClick=${dequeue}>Dequeue</button>
       </div>
       <div className="queue-flow">
@@ -330,166 +375,146 @@ export function QueuePage() {
       </div>
       <motion.div layout className="deck horizontal">
         ${q.map(
-          (v, i) => html`<${motion.div} layout className="deck-item" key=${v + "-" + i}>${v}</${motion.div}>`
+          (cell) =>
+            html`<${motion.div} layout className="deck-item" key=${cell.id}>${cell.v}</${motion.div}>`
         )}
       </motion.div>
-      <p className="step-caption">Front ← left · Rear → right · circular buffers keep en/dequeue both O(1).</p>
+      <div className="step-caption">
+        Cells slide on the dashed axis: arrivals queue on the right, departures peel from the left (ring buffers mimic this logically).
+      </div>
     </div>
   `;
-}
-
-function BSTNode(val) {
-  return { val, left: null, right: null };
-}
-
-/** @returns {any} cloned tree with insert */
-function bstInsert(node, val) {
-  if (!node) return BSTNode(val);
-  if (val <= node.val) node.left = bstInsert(node.left, val);
-  else node.right = bstInsert(node.right, val);
-  return node;
-}
-
-/** inorder assigns x coordinates */
-function layout(node, depth, acc) {
-  if (!node) return;
-  layout(node.left, depth + 1, acc);
-  acc.push({
-    depth,
-    node,
-  });
-  layout(node.right, depth + 1, acc);
 }
 
 export function BSTPage() {
-  const [tree, setTree] = useState(() => BSTNode(50));
-  const [msg, setMsg] = useState("Start at root 50. Insert duplicates go left.");
+  const makeId = useMemo(() => nextBstIdFactory(), []);
+  const [tree, setTree] = useState(null);
+  const [inp, setInp] = useState("");
+  const [note, setNote] = useState("Start empty—or insert typed / random ints to grow the BST.");
+  /** @type {null | "in" | "pre" | "post"} */
+  const [walkMode, setWalkMode] = useState(null);
+  const [walkIdx, setWalkIdx] = useState(0);
+  const [walkPlay, setWalkPlay] = useState(false);
 
-  /** @type {{depth:number,val:number,key:string}[]} */
-  const nodes = useMemo(() => {
-    const list = [];
-    layout(tree, 0, list);
-    return list.map((o, xi) => ({ depth: o.depth, val: o.node.val, key: `${o.node.val}-${xi}` }));
-  }, [tree]);
+  const walkOrder = useMemo(() => {
+    if (!tree || !walkMode) return [];
+    if (walkMode === "in") return inorderIds(tree);
+    if (walkMode === "pre") return preorderIds(tree);
+    return postorderIds(tree);
+  }, [tree, walkMode]);
 
-  function insertRand() {
-    const v = Math.floor(Math.random() * 99 + 1);
-    setTree((t) => bstInsert(JSON.parse(JSON.stringify(t)), v));
-    setMsg(`Inserted ${v}`);
+  useEffect(() => {
+    setWalkIdx(0);
+    setWalkPlay(false);
+  }, [walkMode, tree]);
+
+  useEffect(() => {
+    if (!walkPlay || !walkOrder.length) return;
+    const id = window.setInterval(() => {
+      setWalkIdx((i) => {
+        if (i >= walkOrder.length - 1) {
+          setWalkPlay(false);
+          return 0;
+        }
+        return i + 1;
+      });
+    }, 680);
+    return () => window.clearInterval(id);
+  }, [walkPlay, walkOrder.length]);
+
+  const highlightId =
+    tree && walkMode && walkOrder.length ? walkOrder[walkIdx % walkOrder.length] : null;
+
+  function typedInsertOrRandom(rand) {
+    const t = parseInt(inp.trim(), 10);
+    const v = rand ? Math.floor(Math.random() * 90 + 1) : t;
+    if (!rand && !Number.isFinite(v)) return;
+    setTree((prev) => cloneInsertBST(prev, v, makeId));
+    setInp("");
+    setNote(rand ? `Random insert ${v} (duplicates ≤ go left)` : `Inserted ${v}`);
   }
 
-  return html`
-    <div className="panel">
-      <h1>Binary Search Tree</h1>
-      <p className="subtitle">Left subtree ≤ root ≤ right gives in-order sorted stroll; skew degrades into a linked-list height.</p>
-      <button className="btn btn-primary" onClick=${insertRand}>Random insert</button>
-      <p className="step-caption">${msg}</p>
-      <div className="tree-wrap">
-        ${Array.from(new Set(nodes.map((n) => n.depth)))
-          .sort((a, b) => a - b)
-          .map((d) => {
-            const row = nodes.filter((n) => n.depth === d);
-            return html`<div className="tree-level" key=${"row-" + d}>
-              ${row.map(
-                (n) => html`<${motion.div}
-                  key=${n.key}
-                  className="tree-node"
-                  layout
-                  initial=${{ scale: 0.6, opacity: 0 }}
-                  animate=${{ scale: 1, opacity: 1 }}
-                >
-                  ${n.val}
-                </${motion.div}>`
-              )}
-            </div>`;
-          })}
-      </div>
-      <p className="prose">Rows are depths; horizontal order follows in-order rank. Try skewed inserts to see height growth.</p>
+  return html`<div className="panel">
+    <h1>Binary Search Tree</h1>
+    <p className="subtitle">
+      Parent→child arrows follow real edges. Traversal controls highlight visit order; duplicates use the ≤ → left rule.
+    </p>
+    <div className="controls">
+      <input type="number" placeholder="int value" style=${{ width: 110 }} value=${inp} onChange=${(e) => setInp(e.target.value)} />
+      <button className="btn btn-primary" onClick=${() => typedInsertOrRandom(false)}>Insert typed</button>
+      <button className="btn btn-primary" onClick=${() => typedInsertOrRandom(true)}>Insert random</button>
+      <button className="btn btn-ghost" onClick=${() => { setTree(null); setWalkMode(null); setNote("Cleared."); }}>Clear tree</button>
     </div>
-  `;
+    <div className="controls">
+      <span className="slider-row"><strong style=${{ marginRight: 6 }}>Traversals</strong></span>
+      <button className=${walkMode === "in" ? "btn btn-accent" : "btn btn-ghost"} onClick=${() => setWalkMode("in")}>In-order</button>
+      <button className=${walkMode === "pre" ? "btn btn-accent" : "btn btn-ghost"} onClick=${() => setWalkMode("pre")}>Pre-order</button>
+      <button className=${walkMode === "post" ? "btn btn-accent" : "btn btn-ghost"} onClick=${() => setWalkMode("post")}>Post-order</button>
+      <button className="btn btn-ghost" onClick=${() => setWalkMode(null)}>Traversal off</button>
+      ${walkOrder.length > 0
+        ? html`<button className="btn btn-ghost" onClick=${() => setWalkPlay((x) => !x)}>${walkPlay ? "Pause walk" : "Play walk"}</button>`
+        : null}
+      ${walkOrder.length > 0
+        ? html`<button className="btn btn-ghost" onClick=${() => setWalkIdx((i) => (i + 1) % walkOrder.length)}>Step</button>`
+        : null}
+    </div>
+    <p className="step-caption">${note}</p>
+    ${walkMode && walkOrder.length
+      ? html`<div className="traverse-strip">
+          ${walkMode} sequence:
+          <span className="traverse-seq">${walkOrder.join(" → ")}</span>
+          — active step ${walkIdx + 1} / ${walkOrder.length}
+        </div>`
+      : null}
+    <div className="tree-wrap">
+      <${TreeChart} root=${tree} colored=${false} highlightId=${highlightId} />
+    </div>
+  </div>`;
 }
 
-/** Scripted RB teaching steps (aligns with standard lecture + CSE 123 PDF themes). */
-const RB_SCENARIOS = [
-  {
-    title: "Case A — Uncle red (recolor + push blackness up)",
-    lines: [
-      "Insert red node Z; parent P is red; uncle U is red → recolor parent & uncle black, grandparent black→red.",
-      "If grandparent becomes red root later, repaint it black.",
-    ],
-    levels: [[{ val: "G", rb: "black", focus: false }], [{ val: "P", rb: "red", focus: false }, { val: "U", rb: "red", focus: false }], [{ val: "Z", rb: "red", focus: true }]],
-  },
-  {
-    title: "Case B — Triangle (uncle black) rotate parent",
-    lines: ["Z is inner grandchild→ rotate parent to line up into case C zig-zig shape."],
-    levels: [[{ val: "G", rb: "black", focus: false }], [{ val: "Z", rb: "red", focus: true }, { val: "P", rb: "red", focus: false }]],
-  },
-  {
-    title: "Case C — Line (uncle black) rotate grandparent + recolor",
-    lines: ["After rotation, repaint so parent is black & children red—fixes double red while keeping black height.", "These three patterns match the redraw + rotation choreography in RB slide decks."],
-    levels: [[{ val: "P", rb: "black", focus: false }], [{ val: "Z", rb: "red", focus: false }, { val: "G", rb: "red", focus: false }]],
-  },
-];
-
 export function RBTreePage() {
-  const [scenario, setScenario] = useState(0);
-  const s = RB_SCENARIOS[scenario];
-  return html`
-    <div className="panel">
-      <h1>Red–Black Trees (fix-up cookbook)</h1>
-      <p className="subtitle">
-        Balanced cousin of BST: black-height equal on all leaf paths + no consecutive reds. Inserts paint red then fix double-red with up to two rotations.
-      </p>
-      <div className="controls">
-        ${RB_SCENARIOS.map(
-          (_, i) => html`<button
-            className=${i === scenario ? "btn btn-accent" : "btn btn-ghost"}
-            onClick=${() => setScenario(i)}
-          >
-            ${i === 0 ? "Uncle Red" : i === 1 ? "Triangle" : "Line"}
-          </button>`
-        )}
-      </div>
-      <h3 style=${{ color: "#ffc233", marginBottom: "0.25rem" }}>${s.title}</h3>
-      <div className="tree-wrap">
-        ${s.levels.map(
-          (row, ri) => html`<div className="tree-level" key=${"rb-" + ri}>
-            ${row.map(
-              (n) => html`<${motion.div}
-                layout
-                className=${"tree-node " + (n.rb === "red" ? "red" : "black") + (n.focus ? " focus" : "")}
-              >
-                ${n.val}
-              </${motion.div}>`
-            )}
-          </div>`
-        )}
-      </div>
-      <div className="prose">
-        ${s.lines.map((l) => html`<p>${l}</p>`)}
-        <ul>
-          <li>Compare with rotations + recoloring slides in your <code>CSE 123_07_red_black_trees_S26.pdf</code>.</li>
-          <li>Deletion uses sibling cases (mirror logic) once you mastered insertion visuals.</li>
-        </ul>
-      </div>
+  const wb = useRef({ root: /** @type {any} */ (null) });
+  const [rbTick, setRbTick] = useState(0);
+  const rerender = () => setRbTick((x) => x + 1);
+  const [inp, setInp] = useState("");
+  const [msg, setMsg] = useState("Insert integers; BST insert paints red leaf, fix-up rotates/recolors.");
+
+  function add(rand) {
+    const t = parseInt(inp.trim(), 10);
+    const v = rand ? Math.floor(Math.random() * 90 + 1) : t;
+    if (!rand && !Number.isFinite(v)) return;
+    try {
+      rbInsert(wb.current, v);
+      setMsg(`Inserted ${v} (CLR-style fix-up)`);
+      if (!rand) setInp("");
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : String(e));
+    }
+    rerender();
+  }
+
+  return html`<div className="panel">
+    <h1>Red–Black Tree</h1>
+    <p className="subtitle">
+      Dynamic insertions keep black-height balanced. Rose discs = RED, graphite discs = BLACK. Edges reconnect after rotations.
+    </p>
+    <div className="controls">
+      <input type="number" value=${inp} onChange=${(e) => setInp(e.target.value)} placeholder="key" style=${{ width: 100 }} />
+      <button className="btn btn-primary" onClick=${() => add(false)}>Insert typed</button>
+      <button className="btn btn-primary" onClick=${() => add(true)}>Insert random</button>
+      <button className="btn btn-ghost" onClick=${() => { rbClear(wb.current); rerender(); setMsg("Reset."); }}>Clear</button>
     </div>
-  `;
+    <p className="step-caption">${msg}</p>
+    <div className="tree-wrap">
+      <${TreeChart} root=${wb.current.root} colored=${true} highlightId=${null} rev=${rbTick} />
+    </div>
+  </div>`;
 }
 
 export function HeapPQPage() {
   const [vals, setVals] = useState([85, 60, 22, 30, 10, 5, 3]);
-  const heapLevelsFromArray = () => {
-    /** Level-order slicing: 1,2,4,8… indices like a complete tree in array form. */
-    const res = [];
-    let i = 0;
-    let w = 1;
-    while (i < vals.length) {
-      res.push(vals.slice(i, Math.min(i + w, vals.length)));
-      i += w;
-      w <<= 1;
-    }
-    return res;
-  };
+  const [inp, setInp] = useState("");
+
   function siftUp(arr) {
     let i = arr.length - 1;
     while (i > 0) {
@@ -499,8 +524,11 @@ export function HeapPQPage() {
       i = p;
     }
   }
-  function pushPQ() {
-    const v = Math.floor(Math.random() * 95 + 1);
+  function pushPQ(rand) {
+    const t = parseInt(inp.trim(), 10);
+    const v = rand ? Math.floor(Math.random() * 95 + 1) : t;
+    if (!rand && !Number.isFinite(v)) return;
+    if (!rand) setInp("");
     const next = [...vals, v];
     siftUp(next);
     setVals(next);
@@ -526,57 +554,46 @@ export function HeapPQPage() {
     }
     setVals(next);
   }
-  const levels = heapLevelsFromArray();
-  return html`
-    <div className="panel">
-      <h1>Heap / Priority Queue</h1>
-      <p className="subtitle">
-        Array-backed complete binary tree: parent ≥ children (max heap). Indexes: parent ⌊(i−1)/2⌋, children 2i+1, 2i+2—exactly heapify indexing in Lab heap sort.
-      </p>
-      <div className="controls">
-        <button className="btn btn-primary" onClick=${pushPQ}>Insert (random)</button>
-        <button className="btn btn-ghost" onClick=${popMax}>Extract max</button>
-      </div>
-      <div className="heap-array">
-        ${vals.map(
-          (_, i) => html`<span className="heap-cell idx" key=${"idx" + i}>[${i}]</span>`
-        )}
-      </div>
-      <div className="heap-array">
-        ${vals.map((v, i) => html`<span className="heap-cell" key=${"v" + i}>${v}</span>`)}
-      </div>
-      <div className="tree-wrap">
-        ${levels.map((row, ri) => html`<div className="tree-level" key=${"heaprow" + ri}>
-          ${row.map(
-            (v) => html`<${motion.div} layout className="tree-node">${v}</${motion.div}>`
-          )}
-        </div>`)}
-      </div>
-      <p className="prose">
-        PQ uses the same heap: push sift-up, pop swap root⇄last sift-down—the conceptual twin of extracting max inside heapSort.
-      </p>
+
+  return html`<div className="panel">
+    <h1>Heap / Priority Queue</h1>
+    <p className="subtitle">Edges connect array indices i ↔ parent ⌊(i−1)/2⌋. Max heap: parent dominates children.</p>
+    <div className="controls">
+      <input type="number" placeholder="priority" style=${{ width: 100 }} value=${inp} onChange=${(e) => setInp(e.target.value)} />
+      <button className="btn btn-primary" onClick=${() => pushPQ(false)}>Insert typed</button>
+      <button className="btn btn-primary" onClick=${() => pushPQ(true)}>Insert random</button>
+      <button className="btn btn-ghost" onClick=${popMax}>Extract max</button>
+      <button className="btn btn-ghost" onClick=${() => setVals([])}>Clear</button>
     </div>
-  `;
+    ${vals.length
+      ? html`<div
+          className="heap-array-grid"
+          style=${{ gridTemplateColumns: `repeat(${vals.length}, minmax(3.25rem, 1fr))` }}
+        >
+          ${vals.map(
+            (v, i) =>
+              html`<div className="heap-array-col" key=${"hc-" + i}>
+                <span className="heap-cell idx mono">[${i}]</span>
+                <span className="heap-cell mono">${v}</span>
+              </div>`
+          )}
+        </div>`
+      : null}
+    <${HeapChart} vals=${vals} />
+  </div>`;
 }
 
 export function HashTablePage() {
   const [m, setM] = useState(7);
-  const [pairs] = useState([
+  const hid = useRef(50);
+  const [pairs, setPairs] = useState(() => [
     ["apple", 3],
     ["banana", 1],
-    ["grapes", 4],
-    ["peach", 2],
-    ["mango", 5],
-    ["pear", 0],
-    ["melon", 6],
-    ["papaya", 8],
-    ["lime", 1],
-    ["berry", 2],
   ]);
+  const [keyIn, setKeyIn] = useState("");
+  const [valIn, setValIn] = useState("0");
 
-  /** @type {[string,number][][]} */
   const buckets = useMemo(() => {
-    /** @type {[string,number][][]} */
     const b = Array.from({ length: m }, () => []);
     for (const [k, v] of pairs) {
       let h = 0;
@@ -584,41 +601,46 @@ export function HashTablePage() {
       b[h % m].push([k, v]);
     }
     return b;
-  }, [m]);
+  }, [m, pairs]);
 
-  const load = buckets.reduce((a, ch) => a + ch.length, 0) / m;
+  const alpha = pairs.length ? pairs.length / m : 0;
 
-  return html`
-    <div className="panel">
-      <h1>Hash Tables (chaining demo)</h1>
-      <p className="subtitle">
-        Map keys→buckets via h(k) mod m. Collisions live in chains (lecture slide style from your hashing PDF). Alternate world: open addressing probes linearly/quadratically.
-      </p>
-      <label className="slider-row"
-        ><span># buckets ${m}</span>
-        <input type="range" min="5" max="11" step="1" value=${m} onChange=${(e) => setM(Number(e.target.value))} />
-      </label>
-      <p className="step-caption">Average chain length ~ load factor λ = α = n/m ≈ ${load.toFixed(2)} · Expect Θ(1+) find if λ stays small & h spreads keys.</p>
-      <div className="hash-buckets">
-        ${buckets.map(
-          (chain, idx) =>
-            html`<div className="hash-bucket" key=${"buck" + idx}>
-              <div className="hash-bucket-label">${idx}</div>
-              <div className="hash-chain">
-                ${chain.map(
-                  ([k, vv]) =>
-                    html`<span className="kv-pill" key=${k + vv}>${k}:${vv}</span>`
-                )}
-              </div>
-            </div>`
-        )}
-      </div>
-      <div className="prose">
-        <ul>
-          <li><b>Open addressing:</b> store directly in slots; probes walk until empty—clusters hurt performance.</li>
-          <li><b>Rolling hash / double hashing:</b> reduce clustering (themes in CSE 123_10_Searching_Hashing_S26).</li>
-        </ul>
-      </div>
+  function addPair() {
+    const k = keyIn.trim() || `slot-${hid.current++}`;
+    const vv = parseInt(valIn, 10);
+    const v = Number.isFinite(vv) ? vv : 0;
+    setPairs((p) => [...p, [k, v]]);
+    setKeyIn("");
+  }
+
+  return html`<div className="panel">
+    <h1>Hash Tables (chaining)</h1>
+    <p className="subtitle">Add string keys dynamically; chaining stacks collisions inside each modulus bucket.</p>
+    <div className="controls">
+      <input placeholder="key" style=${{ width: 140 }} value=${keyIn} onChange=${(e) => setKeyIn(e.target.value)} />
+      <input type="number" placeholder="int value" style=${{ width: 90 }} value=${valIn} onChange=${(e) => setValIn(e.target.value)} />
+      <button className="btn btn-primary" onClick=${addPair}>Insert</button>
+      <button className="btn btn-ghost" onClick=${() => setPairs((p) => p.slice(0, Math.max(0, p.length - 1)))}>Pop pair</button>
+      <button className="btn btn-ghost" onClick=${() => setPairs([])}>Clear all</button>
     </div>
-  `;
+    <label className="slider-row"
+      ><span>Buckets ${m}</span>
+      <input type="range" min="5" max="13" step="1" value=${m} onChange=${(e) => setM(Number(e.target.value))} />
+    </label>
+    <p className="step-caption">Load factor α = n/m ≈ ${alpha.toFixed(2)} with ${pairs.length} entries.</p>
+    <div className="hash-buckets">
+      ${buckets.map(
+        (chain, idx) =>
+          html`<div className="hash-bucket" key=${"bk-" + idx}>
+            <div className="hash-bucket-label">${idx}</div>
+            <div className="hash-chain">
+              ${chain.map(
+                ([k, vv], ci) =>
+                  html`<span className="kv-pill" key=${`${k}:${vv}:${ci}`}>${k}:${vv}</span>`
+              )}
+            </div>
+          </div>`
+      )}
+    </div>
+  </div>`;
 }
