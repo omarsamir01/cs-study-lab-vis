@@ -19,6 +19,8 @@ The site uses **jsDelivr `+esm` bundles** so module sub-requests stay on one CDN
 
 If the first deployment fails: go to **Settings → Pages**, set **Build and deployment → Source** to **GitHub Actions**, save, then open the **Actions** tab and **Re-run** the failed job.
 
+If **Actions succeeds** but the site still looks like an older revision: GitHub Pages is usually already updated—the browser cached modules and CSS instead. Hard-refresh (**Ctrl+Shift+R** / clear cache). Each deploy stamps `theme.css`, `main.js`, and relative ES module URLs with `?v=<sha>` so a normal reload picks up changes after CI finishes.
+
 ## Why it broke before
 
 Separate `esm.sh` URLs each bundled their own React → **Invalid hook call** → blank page. This project uses an **import map** so `react`, `react-dom`, Router, and Framer Motion share one React instance.

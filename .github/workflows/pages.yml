@@ -26,12 +26,17 @@ jobs:
       - name: Prepare site
         env:
           REPO: ${{ github.event.repository.name }}
+          GITHUB_SHA: ${{ github.sha }}
         run: |
           mkdir -p deploy
           cp index.html README.md deploy/
           cp -r styles src deploy/
           touch deploy/.nojekyll
           python3 scripts/pages-inject-base.py deploy/index.html
+          python3 scripts/pages-stamp-js-imports.py deploy/src "$GITHUB_SHA"
+          SHORT_SHA="${GITHUB_SHA:0:7}"
+          sed -i "s|\\.\\/styles\\/theme\\.css\"|./styles/theme.css?v=${SHORT_SHA}\"|g" deploy/index.html
+          sed -i "s|\\.\\/src\\/main\\.js\"|./src/main.js?v=${SHORT_SHA}\"|g" deploy/index.html
           cp deploy/index.html deploy/404.html
 
       - uses: actions/configure-pages@v5
