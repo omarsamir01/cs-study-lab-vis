@@ -52,10 +52,10 @@ function AppShellLayout() {
   return html`
     <div className="app-shell">
       <aside className="sidebar">
-        <div className="sidebar-brand">CS Study Lab</div>
+        <div className="sidebar-brand">DSA</div>
         <${NavItem} to="/" color="#00d4aa">Welcome</${NavItem}>
 
-        <div className="sidebar-section-label">Sorting (Lab 8)</div>
+        <div className="sidebar-section-label">Sorting Algorithms</div>
         <${NavItem} to="/sort/insertion" color="#ffc233">Insertion sort</${NavItem}>
         <${NavItem} to="/sort/shell" color="#ff6b9d">Shell sort</${NavItem}>
         <${NavItem} to="/sort/heap" color="#7c5cff">Heap sort</${NavItem}>
@@ -86,7 +86,8 @@ function AppShellLayout() {
 
 function MainRoutes() {
   return html`
-    <${Routes}>
+    <div className="routes-shell">
+      <${Routes}>
       <${Route} path="/" element=${React.createElement(AppShellLayout)}>
         <${Route} index element=${React.createElement(Home)} />
         <${Route} path="sort/insertion" element=${React.createElement(SortInsertion)} />
@@ -105,13 +106,16 @@ function MainRoutes() {
         <${Route} path="*" element=${React.createElement(Navigate, { to: "/", replace: true })} />
       </${Route}>
     </${Routes}>
+    </div>
   `;
 }
 
 export default function App() {
   return html`
-    <${HashRouter}>
-      <${MainRoutes} />
-    </${HashRouter}>
+    <div className="app-root">
+      <${HashRouter}>
+        <${MainRoutes} />
+      </${HashRouter}>
+    </div>
   `;
 }

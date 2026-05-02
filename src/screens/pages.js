@@ -9,6 +9,12 @@ import { inorderIds, postorderIds, preorderIds } from "../lib/treeLayout.js";
 import { rbInsert, rbClear } from "../engines/rbTree.js";
 import {
   DEMO_ARRAY,
+  DEMO_ARRAY_COUNT,
+  DEMO_ARRAY_HEAP,
+  DEMO_ARRAY_INSERTION,
+  DEMO_ARRAY_MERGE,
+  DEMO_ARRAY_RADIX,
+  DEMO_ARRAY_SHELL,
   insertionSortSteps,
   mergeSortSteps,
   heapSortSteps,
@@ -17,23 +23,90 @@ import {
   radixSortSteps,
 } from "../engines/sortSteps.js";
 
-/** Singly: next only. Doubly: next + faint prev back-edge. */
+const HT_WORD_PARTS = [
+  "maple",
+  "river",
+  "nimbus",
+  "orbit",
+  "radix",
+  "shard",
+  "vault",
+  "pulse",
+  "nova",
+  "glyph",
+  "flux",
+  "apex",
+  "blink",
+  "delta",
+  "prism",
+  "quartz",
+];
+
+/** Rolling hash aligned with HashTablePage bucket logic. */
+function htHashDig(key) {
+  let h = 0;
+  for (let i = 0; i < key.length; i++) {
+    h = (h * 131 + key.charCodeAt(i)) >>> 0;
+  }
+  return h >>> 0;
+}
+
+/** @returns {number} bucket index mod m */
+function htBucketMod(key, m) {
+  return htHashDig(key) % m;
+}
+
+/** Pronounceable key; collisions across buckets explored via nonce. */
+function htReadableKey(nonce) {
+  const a = HT_WORD_PARTS[nonce % HT_WORD_PARTS.length];
+  const b = HT_WORD_PARTS[(nonce >>> 7) % HT_WORD_PARTS.length];
+  return `${a}-${b}-${nonce.toString(36)}`;
+}
+
+/**
+ * Finds a readable key landing in bucket (for chained-collision demos).
+ * Always returns within a few thousand tries for small m via dense nonce scan.
+ */
+function htForceBucketKey(m, targetBucket, seed) {
+  for (let t = 0; t < 12000; t++) {
+    const k = htReadableKey(seed + t * 7919);
+    if (htBucketMod(k, m) === targetBucket) return k;
+  }
+  for (let z = 0; z < 50000; z++) {
+    const k = `rk${seed}_${z}`;
+    if (htBucketMod(k, m) === targetBucket) return k;
+  }
+  return `rk${seed}-fallback`;
+}
+
+/** Singly: straight next arrow. Doubly: faint reverse prev stacked above — monochrome like insertion-links, flat (no Bézier). */
 function LinkArrowGlue({ doubly }) {
-  const next = html`<svg className="ll-svg-arrow" viewBox="0 0 52 16" aria-hidden="true">
-    <path
-      d="M2 8h30l-7-5"
+  const next = html`<svg className="ll-svg-arrow ll-svg-arrow--straight" viewBox="0 0 76 22" aria-hidden="true">
+    <line
+      x1="10"
+      y1="11"
+      x2="52"
+      y2="11"
       fill="none"
-      stroke="currentColor"
+      stroke="rgba(255, 255, 255, 0.92)"
       stroke-width="2"
       stroke-linecap="round"
-      stroke-linejoin="round"
     />
-    <path d="M34 8 L44 8 M40 5.2 L44 8 L40 10.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+    <polygon points="66,11 52,9 52,14" fill="rgba(255,255,255,0.92)" />
   </svg>`;
   if (!doubly) return html`<div className="ll-connect">${next}</div>`;
-  const prev = html`<svg className="ll-svg-arrow" viewBox="0 0 52 16" aria-hidden="true" style=${{ opacity: 0.52 }}>
-    <path d="M50 8H20l7-5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" />
-    <path d="M18 8L8 8M12 5.2L8 8l4 2.8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" />
+  const prev = html`<svg className="ll-svg-arrow ll-svg-arrow--straight ll-svg-arrow--backward" viewBox="0 0 76 22" aria-hidden="true">
+    <line
+      x1="66"
+      y1="11"
+      x2="22"
+      y2="11"
+      fill="none"
+      stroke="rgba(255, 255, 255, 0.52)"
+      stroke-width="2"
+      stroke-linecap="round"
+    />
+    <polygon points="10,11 22,9 22,14" fill="rgba(255,255,255,0.52)" />
   </svg>`;
   return html`<div className="ll-connect doubly">${prev}${next}</div>`;
 }
@@ -54,9 +127,9 @@ function useParsedArray(defaults = DEMO_ARRAY) {
   return { inputStr, setInputStr, arr, load };
 }
 
-/** @param {{ fn: (a: number[]) => any, title: string, subtitle: string, tag: string, chips: any[] }} props */
-function SortWrap({ fn, title, subtitle, tag, chips }) {
-  const { inputStr, setInputStr, arr, load } = useParsedArray();
+/** @param {{ fn: (a: number[]) => any, title: string, subtitle: string, tag: string, chips: any[], vizMode?: string, defaultArray?: number[] }} props */
+function SortWrap({ fn, title, subtitle, tag, chips, vizMode, defaultArray }) {
+  const { inputStr, setInputStr, arr, load } = useParsedArray(defaultArray ?? DEMO_ARRAY);
   const steps = useMemo(() => fn(arr), [fn, arr]);
   return html`<${SortingPanel}
     title=${title}
@@ -67,6 +140,7 @@ function SortWrap({ fn, title, subtitle, tag, chips }) {
     inputStr=${inputStr}
     setInputStr=${setInputStr}
     onLoad=${load}
+    vizMode=${vizMode}
   />`;
 }
 
@@ -104,6 +178,8 @@ export function SortInsertion() {
     subtitle="Shift larger elements right; drop the key when the left neighbor is smaller. Exactly the strategy in your Lab array walk."
     tag=${"comparison"}
     chips=${chip.insertion}
+    vizMode=${"insertion"}
+    defaultArray=${DEMO_ARRAY_INSERTION}
   />`;
 }
 
@@ -114,6 +190,7 @@ export function SortShell() {
     subtitle="Insertion sort on spaced subsequences—large gaps move values quickly, tightening to gap 1 (Lab gap = n/2, halving)."
     tag=${"comparison"}
     chips=${chip.shell}
+    defaultArray=${DEMO_ARRAY_SHELL}
   />`;
 }
 
@@ -121,9 +198,10 @@ export function SortHeap() {
   return html`<${SortWrap}
     fn=${heapSortSteps}
     title="Heap Sort"
-    subtitle="Turn the array into a max-heap, then repeatedly extract the root and sift down—the same heapify loops as heapify() in Lab_8_task.cpp."
+    subtitle="Turn the array into a max-heap, then repeatedly extract the root and sift down—the usual heapify / sift-down loops on an array-backed heap."
     tag=${"comparison"}
     chips=${chip.heap}
+    defaultArray=${DEMO_ARRAY_HEAP}
   />`;
 }
 
@@ -134,6 +212,7 @@ export function SortMerge() {
     subtitle="Divide the range until singletons merge back in sorted order (matches merge() + mergeSort() in Lab)."
     tag=${"comparison"}
     chips=${chip.merge}
+    defaultArray=${DEMO_ARRAY_MERGE}
   />`;
 }
 
@@ -144,6 +223,7 @@ export function SortCount() {
     subtitle="Count frequencies, prefix-sum for positions, sweep backwards for stability—as in countSort() Lab code."
     tag=${"noncomparison"}
     chips=${chip.count}
+    defaultArray=${DEMO_ARRAY_COUNT}
   />`;
 }
 
@@ -154,6 +234,7 @@ export function SortRadix() {
     subtitle="Stable digit passes with base-10 counting sort inner loop (countSortRadix + radixSort in Lab)."
     tag=${"noncomparison"}
     chips=${chip.radix}
+    defaultArray=${DEMO_ARRAY_RADIX}
   />`;
 }
 
@@ -162,10 +243,9 @@ export function SortRadix() {
 export function Home() {
   return html`
     <div className="panel">
-      <h1>CS Study Lab</h1>
+      <h1>DSA</h1>
       <p className="subtitle">
-        Interactive tour of the sorting algorithms in
-        <code className="code-accent">Lab_8_task.cpp</code> plus core linear and tree structures. Pick a topic in the
+        Interactive tour of sorting algorithms plus core linear and tree structures. Pick a topic in the
         sidebar—each opens in its own view so you can focus on one idea at a time.
       </p>
       <div className="callout-soft">
@@ -182,14 +262,6 @@ export function Home() {
         <strong className="code-accent">How to run locally:</strong> ES modules cannot load from
         <code>file://</code>. From this folder run <code className="code-accent">node serve.mjs</code> or
         <code>start-server.bat</code>, then open <code className="code-accent">http://127.0.0.1:8090/</code>.
-      </p>
-      <p className="prose">
-        PDF references on your machine:
-        <ul>
-          <li><code>C:\\Users\\rasam\\Downloads\\CSE 123_07_red_black_trees_S26.pdf</code></li>
-          <li><code>C:\\Users\\rasam\\Downloads\\CSE 123_10_Searching_Hashing_S26.pdf</code></li>
-        </ul>
-        These panels restate the usual lecture fix-up cases (recolor, rotations) and hash-table collision policies in plain language.
       </p>
     </div>
   `;
@@ -211,19 +283,17 @@ export function LinkedLists() {
     return Number.isFinite(v) ? v : null;
   }
 
-  function pushFront(useTyped) {
-    const t = useTyped ? parseTyped() : null;
+  function pushFront() {
+    const t = parseTyped();
     const v = t != null ? t : Math.floor(Math.random() * 40 + 1);
-    if (useTyped && t === null) return;
-    if (useTyped) setInp("");
+    if (t != null) setInp("");
     const id = `n${nid.current++}`;
     setCells((xs) => [{ id, val: v }, ...xs]);
   }
-  function pushBack(useTyped) {
-    const t = useTyped ? parseTyped() : null;
+  function pushBack() {
+    const t = parseTyped();
     const v = t != null ? t : Math.floor(Math.random() * 40 + 1);
-    if (useTyped && t === null) return;
-    if (useTyped) setInp("");
+    if (t != null) setInp("");
     const id = `n${nid.current++}`;
     setCells((xs) => [...xs, { id, val: v }]);
   }
@@ -240,22 +310,24 @@ export function LinkedLists() {
         Each node remembers one value plus the next hop (prev & next when doubly). Arrows visualize the traversal order students follow on paper exams.
       </p>
       <div className="controls">
-        <span className="slider-row">Value <input type="number" placeholder="typed int" style=${{ width: 110 }}
-          value=${inp} onChange=${(e) => setInp(e.target.value)} /></span>
+        <span className="slider-row"
+          >Value
+          <input type="number" placeholder="omit for random (1..40)" style=${{ width: 150 }}
+            value=${inp} onChange=${(e) => setInp(e.target.value)}
+        /></span>
         <button className=${`btn btn-ghost ${mode === "single" ? "btn-accent" : ""}`} onClick=${() => setMode("single")}>
           Singly
         </button>
         <button className=${`btn btn-ghost ${mode === "doubly" ? "btn-accent" : ""}`} onClick=${() => setMode("doubly")}>
           Doubly
         </button>
-        <button className="btn btn-primary" onClick=${() => pushFront(true)}>Push front typed</button>
-        <button className="btn btn-primary" onClick=${() => pushBack(true)}>Push back typed</button>
-        <button className="btn btn-primary" onClick=${() => pushFront(false)}>Push front rnd</button>
-        <button className="btn btn-primary" onClick=${() => pushBack(false)}>Push back rnd</button>
+        <button className="btn btn-primary" onClick=${pushFront}>Push front</button>
+        <button className="btn btn-primary" onClick=${pushBack}>Push back</button>
         <button className="btn btn-ghost" onClick=${popFront}>Pop front</button>
         <button className="btn btn-ghost" onClick=${popBack}>Pop back</button>
       </div>
-      <motion.div layout className="ll-row">
+      <div className="viz-page-main">
+        <motion.div layout className="ll-row">
         ${cells.map(
           (cell, i) => html`
             <${React.Fragment} key=${cell.id}>
@@ -275,7 +347,8 @@ export function LinkedLists() {
           `
         )}
       </motion.div>
-      <div className="callout-soft">Use typed pushes for exam-style traces; rnd keeps demos lively.</div>
+      </div>
+      <div className="callout-soft">Leave the value blank for a random 1–40 push; type a number to push that instead.</div>
       <div className="prose">
         <ul>
           <li><b>Singly:</b> one direction—smallest memory footprint.</li>
@@ -313,7 +386,7 @@ export function StackPage() {
         <button className="btn btn-primary" onClick=${pushRand}>Push typed (or rnd if blank)</button>
         <button className="btn btn-ghost" onClick=${pop}>Pop</button>
       </div>
-      <div className="stack-page-stage">
+      <div className="stack-page-stage viz-page-main">
         <div className="stack-diagram-visual">
           <div className="stack-guide">
             <span className="guide-label">TOP of stack →</span>
@@ -356,11 +429,12 @@ export function QueuePage() {
       <p className="subtitle">enqueue grows the rear tail; dequeue always pops the farthest-front cell.</p>
       <div className="controls">
         <span className="slider-row"
-          ><input type="number" placeholder="enqueue value" style=${{ width: 120 }} value=${inp}
+          ><input type="number" placeholder="value" style=${{ width: 120 }} value=${inp}
             onChange=${(e) => setInp(e.target.value)} /></span>
         <button className="btn btn-primary" onClick=${enqueue}>Enqueue typed (or rnd blank)</button>
         <button className="btn btn-ghost" onClick=${dequeue}>Dequeue</button>
       </div>
+      <div className="viz-page-main">
       <div className="queue-flow">
         <div className="queue-axis">
           <span>Front — dequeue</span>
@@ -379,6 +453,7 @@ export function QueuePage() {
             html`<${motion.div} layout className="deck-item" key=${cell.id}>${cell.v}</${motion.div}>`
         )}
       </motion.div>
+      </div>
       <div className="step-caption">
         Cells slide on the dashed axis: arrivals queue on the right, departures peel from the left (ring buffers mimic this logically).
       </div>
@@ -440,7 +515,7 @@ export function BSTPage() {
       Parent→child arrows follow real edges. Traversal controls highlight visit order; duplicates use the ≤ → left rule.
     </p>
     <div className="controls">
-      <input type="number" placeholder="int value" style=${{ width: 110 }} value=${inp} onChange=${(e) => setInp(e.target.value)} />
+      <input type="number" placeholder="value" style=${{ width: 110 }} value=${inp} onChange=${(e) => setInp(e.target.value)} />
       <button className="btn btn-primary" onClick=${() => typedInsertOrRandom(false)}>Insert typed</button>
       <button className="btn btn-primary" onClick=${() => typedInsertOrRandom(true)}>Insert random</button>
       <button className="btn btn-ghost" onClick=${() => { setTree(null); setWalkMode(null); setNote("Cleared."); }}>Clear tree</button>
@@ -466,7 +541,7 @@ export function BSTPage() {
           — active step ${walkIdx + 1} / ${walkOrder.length}
         </div>`
       : null}
-    <div className="tree-wrap">
+    <div className="tree-wrap viz-page-main">
       <${TreeChart} root=${tree} colored=${false} highlightId=${highlightId} />
     </div>
   </div>`;
@@ -499,13 +574,13 @@ export function RBTreePage() {
       Dynamic insertions keep black-height balanced. Rose discs = RED, graphite discs = BLACK. Edges reconnect after rotations.
     </p>
     <div className="controls">
-      <input type="number" value=${inp} onChange=${(e) => setInp(e.target.value)} placeholder="key" style=${{ width: 100 }} />
+      <input type="number" value=${inp} onChange=${(e) => setInp(e.target.value)} placeholder="value" style=${{ width: 100 }} />
       <button className="btn btn-primary" onClick=${() => add(false)}>Insert typed</button>
       <button className="btn btn-primary" onClick=${() => add(true)}>Insert random</button>
       <button className="btn btn-ghost" onClick=${() => { rbClear(wb.current); rerender(); setMsg("Reset."); }}>Clear</button>
     </div>
     <p className="step-caption">${msg}</p>
-    <div className="tree-wrap">
+    <div className="tree-wrap viz-page-main">
       <${TreeChart} root=${wb.current.root} colored=${true} highlightId=${null} rev=${rbTick} />
     </div>
   </div>`;
@@ -559,12 +634,13 @@ export function HeapPQPage() {
     <h1>Heap / Priority Queue</h1>
     <p className="subtitle">Edges connect array indices i ↔ parent ⌊(i−1)/2⌋. Max heap: parent dominates children.</p>
     <div className="controls">
-      <input type="number" placeholder="priority" style=${{ width: 100 }} value=${inp} onChange=${(e) => setInp(e.target.value)} />
+      <input type="number" placeholder="value" style=${{ width: 100 }} value=${inp} onChange=${(e) => setInp(e.target.value)} />
       <button className="btn btn-primary" onClick=${() => pushPQ(false)}>Insert typed</button>
       <button className="btn btn-primary" onClick=${() => pushPQ(true)}>Insert random</button>
       <button className="btn btn-ghost" onClick=${popMax}>Extract max</button>
       <button className="btn btn-ghost" onClick=${() => setVals([])}>Clear</button>
     </div>
+    <div className="viz-page-main">
     ${vals.length
       ? html`<div
           className="heap-array-grid"
@@ -580,6 +656,7 @@ export function HeapPQPage() {
         </div>`
       : null}
     <${HeapChart} vals=${vals} />
+    </div>
   </div>`;
 }
 
@@ -613,13 +690,47 @@ export function HashTablePage() {
     setKeyIn("");
   }
 
+  /**
+   * Add random KV pairs using the same polynomial hash so chains grow naturally.
+   * Biases toward existing buckets so collisions/teaching demos show up reliably.
+   */
+  function insertRandomPairs(count, { biasChains = true } = {}) {
+    setPairs((prev) => {
+      const out = [...prev];
+      const id0 = hid.current;
+      for (let i = 0; i < count; i++) {
+        const value = Math.floor(Math.random() * 99) + 1;
+        const seed = id0 + i * 982451653;
+        let key;
+        if (biasChains && out.length > 0 && Math.random() < 0.54) {
+          const refKey = out[Math.floor(Math.random() * out.length)][0];
+          key = htForceBucketKey(m, htBucketMod(refKey, m), seed);
+        } else {
+          key = htReadableKey(seed ^ (i << 17));
+        }
+        out.push([key, value]);
+      }
+      hid.current = id0 + count;
+      return out;
+    });
+  }
+
   return html`<div className="panel">
     <h1>Hash Tables (chaining)</h1>
     <p className="subtitle">Add string keys dynamically; chaining stacks collisions inside each modulus bucket.</p>
     <div className="controls">
-      <input placeholder="key" style=${{ width: 140 }} value=${keyIn} onChange=${(e) => setKeyIn(e.target.value)} />
-      <input type="number" placeholder="int value" style=${{ width: 90 }} value=${valIn} onChange=${(e) => setValIn(e.target.value)} />
+      <input placeholder="value" style=${{ width: 140 }} value=${keyIn} onChange=${(e) => setKeyIn(e.target.value)} />
+      <input type="number" placeholder="value" style=${{ width: 90 }} value=${valIn} onChange=${(e) => setValIn(e.target.value)} />
       <button className="btn btn-primary" onClick=${addPair}>Insert</button>
+      <button className="btn btn-accent" onClick=${() => insertRandomPairs(1)} title="Adds a pronounceable random key/value; biased to reuse buckets so chaining is visible">
+        Random insert
+      </button>
+      <button className="btn btn-ghost" onClick=${() => insertRandomPairs(10)}
+        title="Ten random pairs (~half aim for hash collisions)"
+        aria-label="Insert ten random pairs"
+      >
+        Bulk +10
+      </button>
       <button className="btn btn-ghost" onClick=${() => setPairs((p) => p.slice(0, Math.max(0, p.length - 1)))}>Pop pair</button>
       <button className="btn btn-ghost" onClick=${() => setPairs([])}>Clear all</button>
     </div>
@@ -628,7 +739,7 @@ export function HashTablePage() {
       <input type="range" min="5" max="13" step="1" value=${m} onChange=${(e) => setM(Number(e.target.value))} />
     </label>
     <p className="step-caption">Load factor α = n/m ≈ ${alpha.toFixed(2)} with ${pairs.length} entries.</p>
-    <div className="hash-buckets">
+    <div className="hash-buckets viz-page-main">
       ${buckets.map(
         (chain, idx) =>
           html`<div className="hash-bucket" key=${"bk-" + idx}>

@@ -1,4 +1,4 @@
-# CS Study Lab (sorting + data structures UI)
+# DSA (sorting + data structures UI)
 
 ## Run locally
 
@@ -13,7 +13,7 @@ Then open **http://127.0.0.1:8090/**
 ## Live demo (GitHub Pages)
 
 After the workflow **Deploy to GitHub Pages** finishes successfully:  
-**https://omarsamir01.github.io/cs-study-lab-vis/**
+**https://omarsamir01.github.io/dsa/**
 
 The site uses **jsDelivr `+esm` bundles** so module sub-requests stay on one CDN (more reliable on GitHub Pages than mixed `esm.sh` loads). A **`404.html`** copy of `index.html` is published so deep links fall back without a hard 404.
 

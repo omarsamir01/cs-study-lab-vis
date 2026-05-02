@@ -1,6 +1,6 @@
 /**
  * Builds step arrays for sorting visualizers.
- * Matches logic from Lab_8_task.cpp
+ * Pedagogical step logic aligned with common array-based sort implementations.
  */
 
 import { computeMergeDiagramPhases } from "../lib/mergeSortDiagram.js";
@@ -28,6 +28,13 @@ import { computeMergeDiagramPhases } from "../lib/mergeSortDiagram.js";
  *    formula?: string | null,
  *   },
  *   radixViz?: Record<string, unknown>,
+ *   heapViz?: { heapSize: number, done?: boolean },
+ *   insertionViz?: {
+ *     values: number[],
+ *     keyIndex: number | null,
+ *     shiftIndices: number[],
+ *     arrow: { from: number, to: number } | null, // key slot vs compare/shift lane index (neighbor)
+ *   },
  * }} SortStep
  */
 
@@ -41,15 +48,43 @@ function step(arr, caption, highlight, extra = {}) {
   };
 }
 
+/** @param {number[]} vals */
+function neutralInsertionViz(vals) {
+  return {
+    values: [...vals],
+    keyIndex: null,
+    shiftIndices: [],
+    arrow: /** @type {null} */ (null),
+  };
+}
+
 /** @param {number[]} original */
 export function insertionSortSteps(original) {
   /** @type {SortStep[]} */
   const steps = [];
   const arr = [...original];
   const n = arr.length;
+
   steps.push(
-    step(arr, "Insertion sort: extend a sorted prefix left-to-right; each new key walks left past larger neighbors.")
+    step(
+      arr,
+      "Insertion sort: extend a sorted prefix left-to-right; each new key walks left past larger neighbors.",
+      {},
+      { insertionViz: neutralInsertionViz(arr) }
+    )
   );
+
+  if (n <= 1) {
+    steps.push(
+      step(
+        arr,
+        n === 0 ? "Nothing to sort (empty array)." : "Single element — already sorted.",
+        {},
+        { insertionViz: neutralInsertionViz(arr) }
+      )
+    );
+    return steps;
+  }
 
   for (let i = 1; i < n; i++) {
     const num = arr[i];
@@ -58,19 +93,51 @@ export function insertionSortSteps(original) {
       steps.push(
         step(
           arr,
-          `i=${i}: key ${num}. Left neighbor ≤ key — nothing to shift; [0..${i}] already sorted.`,
-          { [i]: "pivot" }
+          `i=${i}: key ${num}. Left neighbor ≤ key — nothing to shift; [0…${i}] already sorted.`,
+          { [i]: "pivot" },
+          {
+            insertionViz: {
+              values: [...arr],
+              keyIndex: i,
+              shiftIndices: [],
+              arrow: null,
+            },
+          }
         )
       );
       continue;
     }
-    steps.push(step(arr, `i=${i}: key ${num}. Slide larger elements one step right until a smaller (or start) is found.`, { [i]: "highlight" }));
+
+    let probe = i - 1;
+    while (probe >= 0 && arr[probe] > num) probe--;
+    const insertAt = probe + 1;
+
     while (j >= 0 && arr[j] > num) {
+      const opening = j === i - 1;
+      /** Pedagogical “hole”: key travels in slot `j + 1` before this shift writes `arr[j]` into it */
+      const hole = j + 1;
+      const vis = [...arr];
+      vis[hole] = num;
+      /** Arrow: key sits in `hole`; this step compares / shifts toward neighbor at `j` (shift lane). */
+      const compareArrow =
+        hole !== j ? { from: hole, to: j } : /** @type {null} */ (null);
       steps.push(
         step(
           arr,
-          `Shift ${arr[j]} from [${j}] → [${j + 1}] (key ${num} continues left).`,
-          { [j]: "highlight", [j + 1]: "range" }
+          opening
+            ? `i=${i}: key ${num}. Slide larger elements right until left ≤ key (target insertion index ~[${insertAt}]).`
+            : `Shift ${arr[j]} from [${j}] → [${j + 1}] (key ${num} continues left).`,
+          opening
+            ? { [i]: "highlight", [j]: "highlight" }
+            : { [j]: "highlight", [j + 1]: "range" },
+          {
+            insertionViz: {
+              values: vis,
+              keyIndex: hole,
+              shiftIndices: [j],
+              arrow: compareArrow,
+            },
+          }
         )
       );
       arr[j + 1] = arr[j];
@@ -78,10 +145,30 @@ export function insertionSortSteps(original) {
     }
     arr[j + 1] = num;
     steps.push(
-      step(arr, `Insert ${num} at [${j + 1}]. Sorted prefix is now indices 0…${i}.`, { [j + 1]: "pivot" })
+      step(
+        arr,
+        `Insert ${num} at [${j + 1}]. Sorted prefix now covers indices 0…${i}.`,
+        { [j + 1]: "pivot" },
+        {
+          insertionViz: {
+            values: [...arr],
+            keyIndex: j + 1,
+            shiftIndices: [],
+            arrow: null,
+          },
+        }
+      )
     );
   }
-  steps.push(step(arr, "Done. Worst-case O(n²) shifts; only O(1) extra space."));
+
+  steps.push(
+    step(
+      arr,
+      "Done. Worst-case O(n²) shifts; only O(1) extra space.",
+      {},
+      { insertionViz: neutralInsertionViz(arr) }
+    )
+  );
   return steps;
 }
 
@@ -153,7 +240,14 @@ export function shellSortSteps(original) {
     steps.push(step(arr, `End of gap-${gap} pass.`, {}, gapMeta));
     prevGap = gap;
   }
-  steps.push(step(arr, "Shell sort finished."));
+  steps.push(
+    step(
+      arr,
+      "Shell sort finished.",
+      {},
+      n >= 2 ? { shellGap: 1, shellPrevGap: null } : {}
+    )
+  );
   return steps;
 }
 
@@ -161,6 +255,21 @@ export function heapSortSteps(original) {
   const steps = [];
   const arr = [...original];
   const n = arr.length;
+
+  /** @param {number} heapSize @param {{ done?: boolean }} [opts] */
+  const hv = (heapSize, opts) => ({
+    heapViz: opts?.done ? { heapSize, done: true } : { heapSize },
+  });
+
+  if (!n) {
+    steps.push(step(arr, "Nothing to sort (empty input).", {}, hv(0, { done: true })));
+    return steps;
+  }
+  if (n === 1) {
+    steps.push(step(arr, "Single element — nothing to order.", {}, hv(1)));
+    steps.push(step(arr, "Heap sort complete.", {}, hv(0, { done: true })));
+    return steps;
+  }
 
   /** Sift root down in heap of size `size` (indexes 0..size-1). */
   function siftDown(size, root) {
@@ -179,7 +288,8 @@ export function heapSortSteps(original) {
             [idx]: "pivot",
             ...(l < size ? { [l]: "highlight" } : {}),
             ...(r < size ? { [r]: "highlight" } : {}),
-          }
+          },
+          hv(size)
         )
       );
       if (l < size && arr[l] > arr[largest]) largest = l;
@@ -189,7 +299,7 @@ export function heapSortSteps(original) {
         step(arr, `Child [${largest}]=${arr[largest]} wins — swap with parent [${idx}].`, {
           [idx]: "highlight",
           [largest]: "highlight",
-        })
+        }, hv(size))
       );
       [arr[idx], arr[largest]] = [arr[largest], arr[idx]];
       idx = largest;
@@ -197,23 +307,48 @@ export function heapSortSteps(original) {
   }
 
   steps.push(
-    step(arr, "Heapify: starting at the last parent ⌊n/2⌋−1, sift each node down to form a max-heap.")
+    step(
+      arr,
+      "Heap sort: build a max-heap in the prefix, then repeatedly swap the root into the sorted suffix and sift down.",
+      {},
+      hv(n)
+    )
+  );
+  steps.push(
+    step(
+      arr,
+      "Heapify: starting at the last parent ⌊n/2⌋−1, sift each node down to form a max-heap.",
+      {},
+      hv(n)
+    )
   );
   for (let i = Math.floor(n / 2) - 1; i >= 0; i--) {
     siftDown(n, i);
   }
-  steps.push(step(arr, "Max-heap ready. Repeatedly: swap root (max) with the last unsorted slot, shrink heap, sift new root down."));
+  steps.push(
+    step(
+      arr,
+      "Max-heap ready. Repeatedly: swap root (max) with the last unsorted slot, shrink heap, sift new root down.",
+      {},
+      hv(n)
+    )
+  );
   for (let i = n - 1; i > 0; i--) {
     steps.push(
-      step(arr, `Extract max: swap [0] with [${i}] (sorted region grows at the right).`, {
-        0: "highlight",
-        [i]: "range",
-      })
+      step(
+        arr,
+        `Extract max: swap [0] with [${i}] (sorted region grows at the right).`,
+        {
+          0: "highlight",
+          [i]: "range",
+        },
+        hv(i + 1)
+      )
     );
     [arr[0], arr[i]] = [arr[i], arr[0]];
     siftDown(i, 0);
   }
-  steps.push(step(arr, "Heap sort complete."));
+  steps.push(step(arr, "Heap sort complete.", {}, hv(0, { done: true })));
   return steps;
 }
 
@@ -678,4 +813,13 @@ export function radixSortSteps(original) {
   return steps;
 }
 
-export const DEMO_ARRAY = [170, 45, 75, 90, 802, 24, 2, 66];
+/** Fallback when a panel does not supply its own starter list. */
+export const DEMO_ARRAY = [43, 7, 19, 2, 31, 4, 12, 8];
+
+/** Starter lists tuned per algorithm narrative (~8 ints; Shell uses 9; counting uses small non-negative keys only). */
+export const DEMO_ARRAY_INSERTION = [41, 8, 15, 3, 38, 2, 19, 5]; // Keys travel left through a growing prefix (shifts/exchanges).
+export const DEMO_ARRAY_SHELL = [82, 5, 61, 3, 29, 7, 14, 1, 47]; // +1 elt: distant gap moves still evident before gap-1 polish (n=9).
+export const DEMO_ARRAY_HEAP = [21, 4, 17, 3, 9, 1, 14, 6]; // Builds a clear max-heap then extract-max/sift-down stripes.
+export const DEMO_ARRAY_MERGE = [38, 27, 43, 3, 9, 82, 10, 56]; // Classic 8-element divide/conquer pairing (diagram-friendly).
+export const DEMO_ARRAY_COUNT = [5, 0, 3, 3, 1, 2, 8, 1]; // Tight [0..8] range plus duplicates so frequency + stable scatter are clear.
+export const DEMO_ARRAY_RADIX = [170, 45, 75, 90, 802, 24, 2, 66]; // Multi-width keys: LSD passes for ones, tens, hundreds (classic example).

@@ -8,9 +8,9 @@ const NODE_R = 26;
 const CANVAS_W = 740;
 
 /**
- * @param {{ vals: number[] }} props
+ * @param {{ vals: number[], highlight?: Record<number, string>|undefined }} props
  */
-export default function HeapChart({ vals }) {
+export default function HeapChart({ vals, highlight }) {
   const geo = useMemo(() => {
     const n = vals.length;
     if (!n) return { lines: [], dots: [], H: 120, W: CANVAS_W };
@@ -91,17 +91,18 @@ export default function HeapChart({ vals }) {
         marginTop: `-${H}px`,
       }}
     >
-      ${dots.map(
-        (d) => html`<${motion.div}
+      ${dots.map((d) => {
+        const role = highlight?.[d.ix];
+        return html`<${motion.div}
           key=${"heap-dot-" + d.ix}
           layout
-          className="tree-node-abs heap-node"
+          className=${`tree-node-abs heap-node${role ? " heap-role-" + role : ""}`}
           title=${`index ${d.ix}, value ${d.val}`}
           style=${{ left: `${d.cx}px`, top: `${d.cy}px` }}
         >
           ${d.val}
-        </${motion.div}>`
-      )}
+        </${motion.div}>`;
+      })}
     </div>
   </div>`;
 }

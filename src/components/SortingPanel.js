@@ -5,12 +5,12 @@ import MergeSortDiagram from "./MergeSortDiagram.js";
 import CountingSortDiagram from "./CountingSortDiagram.js";
 import RadixBucketDiagram from "./RadixBucketDiagram.js";
 import ShellSortDiagram from "./ShellSortDiagram.js";
+import HeapSortDiagram from "./HeapSortDiagram.js";
+import InsertionSortTrace from "./InsertionSortTrace.js";
 
-/** Strand hue for aligning bar accents with infographic (degrees string). */
-function shellStrandHueCss(i, gap) {
-  if (gap == null || gap < 1) return null;
-  return `${(360 * (i % gap)) / gap}deg`;
-}
+/** Min / max milliseconds between autoplay steps (lower = faster). */
+const SORT_DELAY_MS_FAST = 120;
+const SORT_DELAY_MS_SLOW = 900;
 
 /** @typedef {{
  *  caption: string,
@@ -24,6 +24,7 @@ function shellStrandHueCss(i, gap) {
  *  mergeRevealExclusive?: number,
  *  countingViz?: Record<string, unknown>,
  *  radixViz?: Record<string, unknown>,
+ *  heapViz?: { heapSize: number, done?: boolean },
  * }} Step */
 
 /** @returns {number[]} */
@@ -58,6 +59,14 @@ function radixDigitAt(val, scale) {
   return Math.floor(Math.abs(v) / scale) % 10;
 }
 
+/** Highlight suffix for compact array cells */
+function flatCellHighlightClass(role) {
+  if (role === "pivot") return " sort-flat-cell--pivot";
+  if (role === "highlight") return " sort-flat-cell--highlight";
+  if (role === "range") return " sort-flat-cell--range";
+  return "";
+}
+
 /**
  * @param {{
  *  title: string,
@@ -68,6 +77,7 @@ function radixDigitAt(val, scale) {
  *  inputStr: string,
  *  setInputStr: (s: string) => void,
  *  onLoad: () => void,
+ *  vizMode?: string,
  * }} props
  */
 export default function SortingPanel({
@@ -79,10 +89,14 @@ export default function SortingPanel({
   inputStr,
   setInputStr,
   onLoad,
+  vizMode,
 }) {
   const [idx, setIdx] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(420);
+  const speedSliderShown = SORT_DELAY_MS_FAST + SORT_DELAY_MS_SLOW - speed;
+  const speedFillPct =
+    ((speedSliderShown - SORT_DELAY_MS_FAST) / (SORT_DELAY_MS_SLOW - SORT_DELAY_MS_FAST)) * 100;
 
   useEffect(() => {
     setIdx(0);
@@ -99,7 +113,6 @@ export default function SortingPanel({
     return () => clearTimeout(t);
   }, [playing, idx, steps.length, speed]);
 
-  const maxVal = Math.max(1, ...(steps[idx]?.arr ?? [1]));
   const cur = steps[idx] ?? steps[0];
 
   /** @type {import('react').CSSProperties} */
@@ -107,31 +120,14 @@ export default function SortingPanel({
     width: "100%",
     maxWidth: 420,
     resize: "vertical",
-    padding: "0.5rem",
-    borderRadius: "8px",
-    border: "1px solid rgba(180, 190, 210, 0.22)",
-    background: "rgba(0,0,0,0.12)",
-    color: "#e8eaf0",
+    boxSizing: "border-box",
     fontFamily: "var(--font-mono)",
     fontSize: "0.85rem",
   };
 
   const gridStyle = useMemo(() => ({
-    gridTemplateColumns: `repeat(${cur.arr.length}, minmax(26px, 1fr))`,
+    gridTemplateColumns: `repeat(${Math.max(cur.arr.length, 1)}, minmax(28px, 1fr))`,
   }), [cur.arr.length]);
-
-  const barGrad = (i, marks) => {
-    if (marks === "highlight")
-      return "linear-gradient(180deg, var(--bar-compare-a) 0%, var(--bar-compare-b) 100%)";
-    if (marks === "pivot")
-      return "linear-gradient(180deg, var(--bar-pivot-a) 0%, var(--bar-pivot-b) 100%)";
-    if (marks === "range") return "linear-gradient(180deg, var(--bar-range-a) 0%, var(--bar-range-b) 100%)";
-    const v = cur.arr[i] ?? 0;
-    const t = maxVal > 0 ? v / maxVal : 0;
-    const lite = Math.round(40 + t * 11);
-    const dark = Math.round(29 + t * 9);
-    return `linear-gradient(180deg, hsl(218, 12%, ${lite}%), hsl(218, 10%, ${dark}%))`;
-  };
 
   const radixScale = cur.radixScale ?? null;
   const radixViz = /** @type {{ keys?: number[] } | undefined} */ (cur.radixViz);
@@ -145,15 +141,25 @@ export default function SortingPanel({
   const showShellViz = shellGap != null && shellGap > 0 && cur.arr.length > 0;
   const shellInfographicOn = showShellViz;
 
+  const heapVizRaw = /** @type {typeof cur.heapViz | undefined} */ (cur.heapViz);
+  const heapDiagramOn =
+    heapVizRaw != null &&
+    typeof heapVizRaw.heapSize === "number" &&
+    Number.isFinite(/** @type {number} */ (heapVizRaw.heapSize));
+  const heapViz = heapDiagramOn ? heapVizRaw : null;
+
   /** @type {number[]} */
   const hiIx = highlightIndices(cur.highlight || {}, cur.arr.length);
   const focusLo = hiIx.length ? hiIx[0] : 0;
   const focusHi = hiIx.length ? hiIx[hiIx.length - 1] : 0;
   const focusIsRun = isContiguousRun(hiIx);
-  /** During Shell sort keep only tinted bars + shell arches—hide generic bracket/P·C overlays to cut noise */
-  const shellQuietChrome = !!showShellViz;
-  const showRangeBracket = hiIx.length >= 2 && focusIsRun && !shellQuietChrome;
-  const showFocusPins = hiIx.length > 0 && !focusIsRun && !shellQuietChrome;
+
+  const showInsertionTrace = vizMode === "insertion";
+
+  /** During Shell / heap infographic / insertion trace hide generic bracket / P·C overlays */
+  const vizQuietChrome = !!(showShellViz || heapDiagramOn || showInsertionTrace);
+  const showRangeBracket = hiIx.length >= 2 && focusIsRun && !vizQuietChrome;
+  const showFocusPins = hiIx.length > 0 && !focusIsRun && !vizQuietChrome;
 
   /** Merge sort attaches this on every step — read from current frame */
   const mergePhases =
@@ -170,20 +176,32 @@ export default function SortingPanel({
   const countingVizOn =
     !!(countingViz && countingViz.inputKeys && countingViz.inputKeys.length > 0);
 
+  /** Flat array row (no bar heights). Hidden when a diagram already shows the full array. */
+  const showFlatArrayStrip =
+    !mergeFlowchartViz &&
+    !countingVizOn &&
+    !radixBucketsOn &&
+    !heapDiagramOn &&
+    !shellInfographicOn &&
+    !showInsertionTrace &&
+    cur.arr.length > 0;
+
   return html`
     <div
       className=${"panel" +
       (mergeFlowchartViz ? " panel-merge-sort" : "") +
       (countingVizOn ? " panel-count-sort" : "") +
       (radixBucketsOn ? " panel-radix-buckets" : "") +
-      (shellInfographicOn ? " panel-shell-sort-ig" : "")}
+      (shellInfographicOn ? " panel-shell-sort-ig" : "") +
+      (heapDiagramOn ? " panel-heap-sort-viz" : "") +
+      (showInsertionTrace ? " panel-insertion-trace" : "")}
     >
       <h1>${title}</h1>
       <p className="subtitle">${subtitle}</p>
       <span className=${tag === "noncomparison" ? "tag noncompare" : "tag compare"}>
         ${tag === "noncomparison" ? "non-comparison" : "comparison-based"}
       </span>
-      <div className="info-grid">
+      <div className="info-grid sorting-complexity-grid">
         ${chips.map((c) => html`<div className="info-chip"><strong>${c.label}</strong>${c.value}</div>`)}
       </div>
       ${mergeFlowchartViz
@@ -205,14 +223,28 @@ export default function SortingPanel({
             value; the active digit column is underlined. Stacks are bottom-first (stable left→right enqueue).
           </p>`
         : null}
+      ${heapDiagramOn && heapViz
+        ? html`<p className="heap-sort-explainer">
+            The pyramid is the <strong>logical max-heap</strong> backed by indices <code>[0 .. heapSize - 1]</code> of the row
+            below. Tinted cells match sift / extract highlights; sorted positions live in the tail.
+          </p>`
+        : null}
       ${shellInfographicOn
         ? html`<p className="shell-ig-explainer">
-            The warm panel matches the classic gap diagram: each slot is tinted by strand (<code>i mod gap</code>). Each row
+            The gap diagram shows each strand: each slot is tinted by its residue (<code>i mod gap</code>). Each row
             lists every index in one subsequence spaced by gap. When highlighted indices lie on the same strand, that row is
             emphasized.
           </p>`
         : null}
-      ${mergeFlowchartViz || countingVizOn || radixBucketsOn || shellInfographicOn
+      ${showInsertionTrace
+        ? html`<p className="insertion-sort-explainer">
+            Each numbered row stacks every snapshot through the current step (like textbook execution figures).
+            <strong>Key</strong> is the value being inserted; <strong>shift lane</strong> marks the neighbor it compares.
+            Below the cells, a <strong>dot</strong> marks the key column and an <strong>upward</strong> chevron marks the compare
+            column—the curve and both markers share the same <code>(i + ½) / n</code> fractions so they stay glued to the arc.
+          </p>`
+        : null}
+      ${mergeFlowchartViz || countingVizOn || radixBucketsOn || shellInfographicOn || heapDiagramOn || showInsertionTrace
         ? null
         : html`<div className="sort-legend" role="presentation">
             <span className="legend-item"
@@ -220,14 +252,20 @@ export default function SortingPanel({
             >
             <span className="legend-item"><span className="legend-swatch pivot"></span>Green — key / root</span>
             <span className="legend-item"><span className="legend-swatch range"></span>Blue-purple — slice / neighbor</span>
-            <span className="legend-item"><span className="legend-swatch default"></span>Gray — idle (height = value)</span>
+            <span className="legend-item"><span className="legend-swatch default"></span>Gray — neutral slot</span>
             <span className="legend-item">
               <span className="legend-swatch focus-overlay"></span>Bracket / P·C⋯ — contiguous span vs scattered slots
-              (hidden during Shell-only steps)
+              (hidden during Shell / heap diagram steps)
             </span>
           </div>`}
       <div className="controls">
-        <textarea rows="2" style=${inputStyle} value=${inputStr} onChange=${(e) => setInputStr(e.target.value)} />
+        <textarea
+          rows="2"
+          style=${inputStyle}
+          placeholder="value"
+          value=${inputStr}
+          onChange=${(e) => setInputStr(e.target.value)}
+        />
         <button className="btn btn-primary" onClick=${onLoad}>Load numbers</button>
         <button className="btn btn-accent" onClick=${() => { setIdx(0); setPlaying(true); }}>Play</button>
         <button className="btn btn-ghost" onClick=${() => setPlaying(false)}>Pause</button>
@@ -240,19 +278,36 @@ export default function SortingPanel({
           onClick=${() => { setPlaying(false); setIdx(Math.min(steps.length - 1, idx + 1)); }}
           >Step forward
         </button>
-        <span className="slider-row">
-          Slow
-          <input type="range" min="120" max="900" value=${speed} onChange=${(e) => setSpeed(Number(e.target.value))} />
-          Fast
-        </span>
-        <span className="slider-row">${steps.length ? idx + 1 : 0} / ${steps.length}</span>
+        <div className="sort-speed-row">
+          <span className="sort-speed-label">Slow</span>
+          <div className="sort-speed-track-wrap">
+            <input
+              className="sort-speed-range"
+              type="range"
+              min=${SORT_DELAY_MS_FAST}
+              max=${SORT_DELAY_MS_SLOW}
+              value=${speedSliderShown}
+              aria-label="Playback speed: slower on the left, faster on the right"
+              title="Delay between steps (ms): left = slower, right = faster"
+              style=${{ "--speed-fill-pct": `${speedFillPct}%` }}
+              onChange=${(e) =>
+                setSpeed(SORT_DELAY_MS_FAST + SORT_DELAY_MS_SLOW - Number(e.target.value))}
+            />
+          </div>
+          <span className="sort-speed-label">Fast</span>
+          <span className="sort-speed-step" aria-live="polite"
+            >Step ${steps.length ? idx + 1 : 0} / ${steps.length}</span
+          >
+        </div>
       </div>
       <div
         className=${"sort-viz-shell " +
         (mergeFlowchartViz ? "sort-viz-merge-flow " : "") +
         (countingVizOn ? "sort-viz-count-sort " : "") +
         (radixBucketsOn ? "sort-viz-radix-buckets " : "") +
-        (shellInfographicOn ? "sort-viz-shell-ig " : "")}
+        (shellInfographicOn ? "sort-viz-shell-ig " : "") +
+        (heapDiagramOn ? "sort-viz-heap-tree " : "") +
+        (showInsertionTrace ? "sort-viz-insertion-trace " : "")}
       >
         ${mergeFlowchartViz
           ? html`<${MergeSortDiagram}
@@ -264,9 +319,19 @@ export default function SortingPanel({
             ? html`<${CountingSortDiagram} key=${"count-viz-" + idx} viz=${countingViz} />`
             : radixBucketsOn
               ? html`<${RadixBucketDiagram} key=${"radix-" + idx} viz=${radixViz} />`
+              : showInsertionTrace
+                ? html`<${InsertionSortTrace} steps=${steps} uptoIndex=${idx} />`
               : html`<${AnimatePresence} mode="wait">
               <${motion.div} key=${idx} initial=${{ opacity: 0.5, y: 4 }} animate=${{ opacity: 1, y: 0 }} exit=${{ opacity: 0.15 }}>
                 ${html`
+                  ${heapDiagramOn && heapViz
+                    ? html`<${HeapSortDiagram}
+                        key=${"heap-ig-" + idx}
+                        arr=${cur.arr}
+                        heapViz=${heapViz}
+                        highlight=${cur.highlight}
+                      />`
+                    : null}
                   ${shellInfographicOn && shellGap != null
                     ? html`<${ShellSortDiagram}
                         key=${"shell-ig-" + idx}
@@ -330,47 +395,31 @@ export default function SortingPanel({
                           })}
                         </div>`
                     : null}
-                  <div className="sort-grid" style=${gridStyle}>
-                    ${cur.arr.map(
-                      (v, i) =>
-                        html`<div
-                          className=${"sort-cell" + (shellInfographicOn ? " shell-sort-bar-wrap" : "")}
-                          key=${"c-" + idx + "-" + i}
-                          style=${shellInfographicOn && shellGap != null
-                            ? { "--shell-strand-h": /** @type {string} */ (shellStrandHueCss(i, shellGap)) }
-                            : undefined}
-                        >
-                          <span className="bar-index-label">${i}</span>
-                          <div className="sort-bar-slot">
-                            <${motion.div}
-                              layout
-                              className=${"bar " + ((cur.highlight && cur.highlight[i]) || "")}
+                  ${showFlatArrayStrip
+                    ? html`<div className="sort-flat-array-strip" style=${gridStyle}>
+                        ${cur.arr.map(
+                          (v, i) =>
+                            html`<div
+                              key=${"fl-" + idx + "-" + i}
+                              className=${"sort-flat-cell mono" + flatCellHighlightClass(cur.highlight && cur.highlight[i])}
                               title=${`index ${i}, value ${v}`}
-                              style=${{
-                                height: `${(v / maxVal) * 100 + 20}px`,
-                                background: barGrad(i, cur.highlight && cur.highlight[i]),
-                              }}
-                              initial=${{ scaleY: 0.92 }}
-                              animate=${{ scaleY: 1 }}
-                              transition=${{ type: "spring", stiffness: 380, damping: 30 }}
                             >
-                              ${v}
-                            </${motion.div}>
-                          </div>
-                        </div>`
-                    )}
-                  </div>
+                              <span className="sort-flat-ix">${String(i)}</span>
+                              <span className="sort-flat-val">${String(v)}</span>
+                            </div>`
+                        )}
+                      </div>`
+                    : null}
                 `}
               </${motion.div}>
             </${AnimatePresence}>`
           }
       </div>
       <p className="step-caption">${cur.caption}</p>
-      ${mergeFlowchartViz || countingVizOn || radixBucketsOn || shellInfographicOn
+      ${mergeFlowchartViz || countingVizOn || radixBucketsOn || shellInfographicOn || heapDiagramOn || showInsertionTrace
         ? null
         : html`<p className="callout-soft">
-        Tip: single-step mode lines up narration, tinted bars, and the index row. Default list follows
-        <code> Lab_8_task.cpp </code>.
+        Tip: single-step mode lines up narration with the row of index boxes and captions. Default values match the usual demo arrays for each algorithm.
       </p>`}
     </div>
   `;
