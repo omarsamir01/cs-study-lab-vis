@@ -23,14 +23,6 @@ import {
   radixSortSteps,
 } from "../engines/sortSteps.js";
 
-/** Author & repo links shown on the welcome screen */
-const WELCOME_AUTHOR = {
-  name: "Omar Samir",
-  githubHandle: "omarsamir01",
-  email: "omarsamir078@gmail.com",
-  repoUrl: "https://github.com/omarsamir01/cs-study-lab-vis",
-};
-
 const HT_WORD_PARTS = [
   "maple",
   "river",
@@ -249,38 +241,13 @@ export function SortRadix() {
 /* --- Data structure screens --- */
 
 export function Home() {
-  const { name, githubHandle, email, repoUrl } = WELCOME_AUTHOR;
   return html`
     <div className="panel">
       <h1>DSA</h1>
-      <div className="welcome-about callout-soft" style=${{ marginBottom: "1rem" }}>
-        <p className="subtitle" style=${{ marginBottom: "0.65rem" }}>
-          Hi—I'm <strong>${name}</strong> (
-          <a href=${`https://github.com/${githubHandle}`} target="_blank" rel="noopener noreferrer">${githubHandle}</a>
-          ). I built this site to make data structures and sorting algorithms easier to visualize, trace step by step,
-          and reason about.
-        </p>
-        <p className="subtitle" style=${{ marginBottom: "0.65rem" }}>
-          You'll find sorting visualizers plus linked lists, stacks, queues, trees, heaps, and hashing—all on separate
-          screens so you can focus on one idea at a time.
-        </p>
-        <p className="subtitle" style=${{ marginBottom: 0 }}>
-          If this helps you, please <strong>star</strong> the repo on GitHub, share it with classmates, and bookmark it for
-          later review. I welcome contributions, feedback, or ideas—from small typo fixes to new diagrams.
-        </p>
-      </div>
       <p className="subtitle">
-        Interactive tour—pick a topic in the sidebar; each screen opens its own focused view.
+        Interactive tour of sorting algorithms plus core linear and tree structures. Pick a topic in the sidebar—each
+        opens in its own view so you can focus on one idea at a time.
       </p>
-      <div className="welcome-contact prose" style=${{ margin: "1rem 0" }}>
-        <strong className="code-accent">Contact:</strong> For anything about this repo—bugs, forks, or
-        collaborations—email me at ${" "}
-        <a href=${`mailto:${email}?subject=${encodeURIComponent("DSA visualization site")}`}>${email}</a>
-        . You can also use the Issues tab:${" "}
-        <a href=${`${repoUrl}/issues`} target="_blank" rel="noopener noreferrer">${repoUrl}/issues</a>
-        . Source code:${" "}
-        <a href=${repoUrl} target="_blank" rel="noopener noreferrer">${repoUrl}</a>.
-      </div>
       <div className="callout-soft">
         <strong>Hosted on GitHub Pages?</strong> Scripts load from jsDelivr—if the tab stays blank, hard-refresh
         (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd>) or try another browser; campus networks sometimes filter ES module CDNs.
